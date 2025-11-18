@@ -97,6 +97,10 @@ const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
     const isStartNewCycle = currentNpcType === NpcType.F;
     const isSRank = nextNpcType === NpcType.S;
 
+    // Resolve stock info to use the prop and avoid build errors
+    const fStockItem = warehouseItems.find(i => i.id === 'f-pet-stock');
+    const fStockCount = fStockItem ? fStockItem.currentStock : 0;
+
     if (isSRank) {
          return (
             <div className="space-y-4">
@@ -141,6 +145,9 @@ const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
                 {isStartNewCycle ? (
                     <li className="pl-2">
                         Open Warehouse. Retrieve <span className="font-bold text-white">1x F-Pet Stock</span>.
+                        <span className={`ml-2 text-xs ${fStockCount > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            (Current Stock: {fStockCount})
+                        </span>
                     </li>
                 ) : (
                     <li className="pl-2">
