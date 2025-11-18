@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot, CompletedTaskLog, VirtualHouse } from './types';
 import { CYCLE_TIMES, INITIAL_APP_STATE } from './constants';
@@ -417,7 +416,7 @@ const App: React.FC = () => {
             onSkipToCheckin={handleSkipToCheckin}
             onTimeTravel={handleTimeTravel}
         />}
-      <main className="flex-grow p-4 sm:p-6 lg:p-8 max-w-full mx-auto w-full">
+      <main className="flex-grow p-2 sm:p-4 lg:p-8 max-w-full mx-auto w-full">
         {renderView()}
       </main>
       {isHelpModalOpen && <HelpModal onClose={() => setIsHelpModalOpen(false)} />}
