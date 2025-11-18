@@ -475,6 +475,10 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
 
   const activeTaskId = dueTasks.length > 0 ? dueTasks[0].id : null;
 
+  const nextCheckinString = nextCheckin 
+    ? nextCheckin.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) 
+    : '';
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg p-6">
       <div className="flex justify-between items-center mb-6">
@@ -505,7 +509,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       )}
 
       <TaskTable
-          title={`Upcoming`}
+          title={`Upcoming${nextCheckinString ? ` (Check-in: ${nextCheckinString})` : ''}`}
           tasks={upcomingTasks}
           isInteractive={false}
           warehouseItems={warehouseItems}

@@ -126,6 +126,7 @@ export interface CollectedPet {
 
 export interface ProjectedProfit {
     grossRevenue: number;
+    grossRevenueAlternativeA?: number;
     npcExpenses: number;
     perfectionExpenses: number;
     netProfit: number;

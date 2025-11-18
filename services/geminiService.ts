@@ -10,11 +10,12 @@ const calculateProjectedProfit = (
 ): ProjectedProfit => {
     const activeSlots = houses.flatMap(h => h.slots).filter(s => s.npc.type && s.npc.duration);
     if (activeSlots.length === 0 || checkinTimes.length === 0) {
-        return { grossRevenue: 0, npcExpenses: 0, perfectionExpenses: 0, netProfit: 0, sPetsCount: 0 };
+        return { grossRevenue: 0, grossRevenueAlternativeA: 0, npcExpenses: 0, perfectionExpenses: 0, netProfit: 0, sPetsCount: 0 };
     }
 
     const fullCycleTimeHours = cycleTimes.reduce((sum, ct) => sum + ct.time, 0);
     const finalPetPrice = prices.petPrices[NpcType.S] || 0;
+    const aPetPrice = prices.petPrices[NpcType.A] || 0;
 
     const numCheckins = checkinTimes.length;
     const avgHoursBetweenCheckins = 24 / numCheckins;
@@ -25,6 +26,7 @@ const calculateProjectedProfit = (
     const sPetsCount = activeSlots.length * pipelinesPerSlotPerWeek;
     
     const grossRevenue = sPetsCount * finalPetPrice;
+    const grossRevenueAlternativeA = sPetsCount * aPetPrice;
 
     let npcExpenses = 0;
     activeSlots.forEach(slot => {
@@ -41,7 +43,7 @@ const calculateProjectedProfit = (
 
     const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
 
-    return { grossRevenue, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
+    return { grossRevenue, grossRevenueAlternativeA, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
 };
 
 // Calculates the ACTUAL expected cash flow for the next 7 days based on current timers
@@ -55,6 +57,7 @@ const calculateActualWeeklyFinances = (
     const endOfWeek = now + oneWeekMs;
 
     let grossRevenue = 0;
+    let grossRevenueAlternativeA = 0;
     let npcExpenses = 0;
     let sPetsCount = 0;
 
@@ -64,6 +67,7 @@ const calculateActualWeeklyFinances = (
             if (slot.npc.type === NpcType.A && slot.pet.finishTime) {
                 if (slot.pet.finishTime > now && slot.pet.finishTime <= endOfWeek) {
                     grossRevenue += (prices.petPrices[NpcType.S] || 0);
+                    grossRevenueAlternativeA += (prices.petPrices[NpcType.A] || 0);
                     sPetsCount++;
                 }
             }
@@ -82,7 +86,7 @@ const calculateActualWeeklyFinances = (
     const perfectionExpenses = 0; 
     const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
 
-    return { grossRevenue, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
+    return { grossRevenue, grossRevenueAlternativeA, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
 };
 
 

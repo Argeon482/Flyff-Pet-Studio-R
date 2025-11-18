@@ -65,7 +65,7 @@ const EditableCashBalance: React.FC<{ balance: number; onSave: (newBalance: numb
 };
 
 const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit, title: string, subTitle: string }> = ({ profitData, title, subTitle }) => {
-    const { grossRevenue, npcExpenses, perfectionExpenses, netProfit, sPetsCount } = profitData;
+    const { grossRevenue, grossRevenueAlternativeA, npcExpenses, perfectionExpenses, netProfit, sPetsCount } = profitData;
     
     const formatCurrency = (value: number) => `$${Math.round(value).toLocaleString()}`;
 
@@ -81,6 +81,12 @@ const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit, title: string, su
                     <span className="text-gray-400">Rev ({Math.round(sPetsCount)} S)</span>
                     <span className="font-semibold text-green-400">{formatCurrency(grossRevenue)}</span>
                 </div>
+                {grossRevenueAlternativeA !== undefined && (
+                    <div className="flex justify-between text-[10px] sm:text-xs -mt-1 mb-1">
+                         <span className="text-gray-500 pl-2">↳ Or Sell as A:</span>
+                         <span className="text-gray-400">{formatCurrency(grossRevenueAlternativeA)}</span>
+                    </div>
+                )}
                 <div className="flex justify-between">
                     <span className="text-gray-400">NPC Costs</span>
                     <span className="font-semibold text-yellow-400">-{formatCurrency(npcExpenses)}</span>
