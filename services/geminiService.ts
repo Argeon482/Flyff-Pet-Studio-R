@@ -119,9 +119,6 @@ export const generateDailyBriefing = (
     const createBatchedTasks = (filterFn: (finishTime: number) => boolean): DailyBriefingTask[] => {
         const batchedTasks: DailyBriefingTask[] = [];
         
-        // Group by House ID first
-        const houseGroups: Record<number, typeof houses[0]['slots'][0] & { slotIndex: number }>[] = [];
-        
         houses.forEach(h => {
             const finishedSlotsInHouse = h.slots
                 .map((s, i) => ({ ...s, slotIndex: i }))
