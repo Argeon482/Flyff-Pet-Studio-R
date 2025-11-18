@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { House, CycleTime, NpcType, Division, HouseTemplate } from '../types';
+import { House, CycleTime, NpcType, Division, HouseTemplate, VirtualHouse } from '../types';
 import { DIVISIONS } from '../constants';
 import ConfirmationModal from './ConfirmationModal';
 import AddHouseModal from './AddHouseModal';
-import { LinkedIcon, UnlinkedIcon } from './icons/Icons';
+import { LinkedIcon, UnlinkedIcon, VirtualIcon } from './icons/Icons';
 
 interface FactoryFloorProps {
   houses: House[];
@@ -14,6 +14,8 @@ interface FactoryFloorProps {
   onAddHousesFromTemplate: (template: HouseTemplate, quantity: number) => void;
   onRemoveHouse: (id: number) => void;
   simulatedTime: number | null;
+  virtualHouses: VirtualHouse[];
+  onOpenVirtualHouseModal: () => void;
 }
 
 const CountdownTimer: React.FC<{ finishTime: number, onComplete: () => void, simulatedTime: number | null }> = ({ finishTime, onComplete, simulatedTime }) => {
@@ -29,7 +31,7 @@ const CountdownTimer: React.FC<{ finishTime: number, onComplete: () => void, sim
     useEffect(() => {
         if (simulatedTime) {
             setTimeLeft(getRemainingTime());
-            return; // No interval needed in simulation mode
+            return; 
         }
 
         if (timeLeft <= 0) return;
@@ -56,7 +58,7 @@ const CountdownTimer: React.FC<{ finishTime: number, onComplete: () => void, sim
         const newTapCount = tapCount + 1;
         setTapCount(newTapCount);
         if (tapTimer.current) clearTimeout(tapTimer.current);
-        tapTimer.current = setTimeout(() => setTapCount(0), 800); // Reset taps after 800ms
+        tapTimer.current = setTimeout(() => setTapCount(0), 800);
     };
 
     const remaining = getRemainingTime();
@@ -192,7 +194,10 @@ const NpcExpirationDisplay: React.FC<{ expiration: string | null; simulatedTime:
     return <span className="text-sm text-gray-300">{`${days}d ${hours}h ${minutes}m`}</span>;
 };
 
-const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycleTimes, onSetHouses, onAddHousesFromTemplate, onRemoveHouse, simulatedTime }) => {
+const FactoryFloor: React.FC<FactoryFloorProps> = ({ 
+    houses, onUpdateHouse, cycleTimes, onSetHouses, onAddHousesFromTemplate, onRemoveHouse, simulatedTime, 
+    virtualHouses, onOpenVirtualHouseModal 
+}) => {
     const [progressInputSlot, setProgressInputSlot] = useState<{ houseId: number; slotIndex: number; totalHours: number } | null>(null);
     const [expirationInputSlot, setExpirationInputSlot] = useState<{ houseId: number; slotIndex: number; } | null>(null);
     const [confirmAction, setConfirmAction] = useState<{ type: 'clear_houses' | 'reset' | 'remove'; houseId?: number; title: string; message: React.ReactNode; } | null>(null);
@@ -207,7 +212,6 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
     const [editLabelValue, setEditLabelValue] = useState('');
 
     useEffect(() => {
-        // Cleanup timers on unmount
         return () => {
             if (startConfirmTimer.current) clearTimeout(startConfirmTimer.current);
         };
@@ -239,6 +243,10 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
             if (field === 'type' && !value) {
                 npcSlot.duration = null;
                 npcSlot.expiration = null;
+            }
+            // If toggling to LINKED, remove from virtual house if it was in one
+            if (field === 'mode' && value === 'LINKED') {
+                npcSlot.virtualHouseId = undefined;
             }
 
             onUpdateHouse({ ...house, slots: newSlots });
@@ -324,7 +332,7 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
                 ...house,
                 perfectionAttempts: 0,
                 slots: Array.from({ length: 3 }, () => ({
-                    npc: { type: null, expiration: null, duration: null },
+                    npc: { type: null, expiration: null, duration: null, mode: 'LINKED' },
                     pet: { name: null, startTime: null, finishTime: null }
                 }))
             };
@@ -382,6 +390,12 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-end items-center gap-4">
                  <button
+                    onClick={onOpenVirtualHouseModal}
+                    className="bg-purple-700 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded flex items-center gap-2"
+                >
+                    <VirtualIcon /> Manage Virtual Houses
+                </button>
+                 <button
                     onClick={() => setIsAddHouseModalOpen(true)}
                     className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded"
                 >
@@ -404,7 +418,7 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-700/50">
                             <tr>
-                                {['House / Mode', 'Division', 'Service Block', 'Slot 1', 'Slot 2', 'Slot 3', 'Actions'].map(h => <th key={h} className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{h}</th>)}
+                                {['House', 'Division', 'Service Block', 'Slot 1', 'Slot 2', 'Slot 3', 'Actions'].map(h => <th key={h} className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{h}</th>)}
                             </tr>
                         </thead>
                         <tbody className="bg-gray-800 divide-y divide-gray-700">
@@ -437,16 +451,6 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
                                                     {house.label || `House #${house.id}`}
                                                 </span>
                                             )}
-                                            <button
-                                                onClick={() => handleFieldChange(house.id, 'productionMode', house.productionMode === 'INDEPENDENT' ? 'LINKED' : 'INDEPENDENT')}
-                                                className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 transition-colors mt-1 w-fit"
-                                                title={house.productionMode === 'INDEPENDENT' ? 'Switch to Linked Mode (Flows to next slot)' : 'Switch to Independent Mode (Harvests to Warehouse)'}
-                                            >
-                                                {house.productionMode === 'INDEPENDENT' ? <UnlinkedIcon /> : <LinkedIcon />}
-                                                <span className={house.productionMode === 'INDEPENDENT' ? 'text-yellow-400' : 'text-green-400'}>
-                                                    {house.productionMode === 'INDEPENDENT' ? 'Solo' : 'Link'}
-                                                </span>
-                                            </button>
                                         </div>
                                     </td>
                                     <td className="px-3 py-4">
@@ -457,13 +461,38 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
                                     <td className="px-3 py-4 text-sm text-gray-300">{house.serviceBlock}</td>
                                     {house.slots.map((slot, i) => {
                                         const isConfirmingStart = startConfirm && startConfirm.houseId === house.id && startConfirm.slotIndex === i;
+                                        const virtualHouse = slot.npc.virtualHouseId 
+                                            ? virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId) 
+                                            : null;
+                                        
                                         return (
-                                        <td key={i} className="px-3 py-4 align-top">
+                                        <td key={i} className="px-3 py-4 align-top relative">
+                                            {/* Mode Toggle (Top Right of cell) */}
+                                            {slot.npc.type && (
+                                                 <button
+                                                    onClick={() => handleNpcChange(house.id, i, 'mode', slot.npc.mode === 'LINKED' ? 'SOLO' : 'LINKED')}
+                                                    className="absolute top-1 right-1 p-1 rounded hover:bg-gray-600"
+                                                    title={slot.npc.mode === 'LINKED' ? 'Mode: Linked (To next slot in House)' : 'Mode: Solo (Virtual House or Warehouse)'}
+                                                >
+                                                    {slot.npc.mode === 'LINKED' ? <LinkedIcon /> : <UnlinkedIcon />}
+                                                </button>
+                                            )}
+                                            
                                             <div className="flex flex-col gap-2 w-40">
-                                                <select value={slot.npc.type || ''} onChange={e => handleNpcChange(house.id, i, 'type', e.target.value || null)} className="bg-gray-700 text-white rounded p-1">
-                                                    <option value="">Empty</option>
-                                                    {npcOptions.map(opt => <option key={opt} value={opt} disabled={usedNpcTypes.includes(opt) && slot.npc.type !== opt}>{opt}</option>)}
-                                                </select>
+                                                <div className="flex items-center gap-2">
+                                                    <select value={slot.npc.type || ''} onChange={e => handleNpcChange(house.id, i, 'type', e.target.value || null)} className="bg-gray-700 text-white rounded p-1 flex-grow">
+                                                        <option value="">Empty</option>
+                                                        {npcOptions.map(opt => <option key={opt} value={opt} disabled={usedNpcTypes.includes(opt) && slot.npc.type !== opt}>{opt}</option>)}
+                                                    </select>
+                                                </div>
+                                                
+                                                {/* Virtual House Badge */}
+                                                {virtualHouse && slot.npc.mode === 'SOLO' && (
+                                                    <div className="text-xs bg-purple-900 text-purple-200 px-1.5 py-0.5 rounded border border-purple-700 truncate" title={virtualHouse.name}>
+                                                        <span className="font-bold">VH:</span> {virtualHouse.name}
+                                                    </div>
+                                                )}
+
                                                 {slot.npc.type && <>
                                                     <select value={slot.npc.duration || ''} onChange={e => handleNpcChange(house.id, i, 'duration', e.target.value ? parseInt(e.target.value) : null)} className="bg-gray-700 text-white rounded p-1">
                                                         <option value="">Duration?</option>

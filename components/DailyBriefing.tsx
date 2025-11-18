@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { House, DailyBriefingTask, CycleTime, WarehouseItem, NpcType, CompletedTaskLog } from '../types';
+import { House, DailyBriefingTask, CycleTime, WarehouseItem, NpcType, CompletedTaskLog, VirtualHouse } from '../types';
 import { generateDailyBriefing } from '../services/geminiService';
 import ConfirmationModal from './ConfirmationModal';
-import { TamerIcon, HarvestIcon, WarehouseIcon, ChampionIcon } from './icons/Icons';
+import { TamerIcon, HarvestIcon, WarehouseIcon, ChampionIcon, VirtualIcon, LinkedIcon } from './icons/Icons';
 
 interface DailyBriefingProps {
   houses: House[];
@@ -16,6 +16,7 @@ interface DailyBriefingProps {
   simulatedTime: number | null;
   completedTaskLog: CompletedTaskLog[];
   setCompletedTaskLog: React.Dispatch<React.SetStateAction<CompletedTaskLog[]>>;
+  virtualHouses: VirtualHouse[];
 }
 
 const PetBadge: React.FC<{ type: NpcType }> = ({ type }) => {
@@ -36,7 +37,7 @@ const PetBadge: React.FC<{ type: NpcType }> = ({ type }) => {
 };
 
 const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
-    const { currentNpcType, nextNpcType, forceStore } = task;
+    const { currentNpcType, nextNpcType, forceStore, targetHouseId, houseId, virtualHouseName } = task;
     
     if (nextNpcType === NpcType.S) {
         return (
@@ -47,7 +48,6 @@ const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareho
         );
     }
 
-    // Independent Harvest to Warehouse
     if (forceStore) {
         return (
              <div className="flex items-center gap-1.5 text-xs md:text-sm">
@@ -67,6 +67,7 @@ const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareho
     const isStartNewCycle = currentNpcType === NpcType.F;
     const stockItem = warehouseItems.find(i => i.id === 'f-pet-stock');
     const stockCount = stockItem ? stockItem.currentStock : 0;
+    const isCrossHouse = targetHouseId && targetHouseId !== houseId;
 
     return (
         <div className="flex items-center gap-1.5 text-xs md:text-sm">
@@ -97,7 +98,15 @@ const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareho
                     </div>
                     <span className="text-gray-500">→</span>
                     <div className="flex flex-col items-center text-cyan-400">
-                        <div className="border border-cyan-500 px-1 rounded">Slot</div>
+                        {isCrossHouse ? (
+                            <div className="bg-purple-900/50 border border-purple-500 px-1 rounded text-purple-200 flex items-center gap-1">
+                                <VirtualIcon /> H#{targetHouseId}
+                            </div>
+                        ) : (
+                             <div className="border border-cyan-500 px-1 rounded flex items-center gap-1">
+                                 <LinkedIcon /> Slot
+                             </div>
+                        )}
                         <span>Start</span>
                     </div>
                 </>
@@ -106,18 +115,20 @@ const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareho
                 <PetBadge type={nextNpcType!} />
                 <span className="text-gray-300 font-semibold">-Pet</span>
             </div>
+            {virtualHouseName && (
+                 <div className="ml-1 text-xs text-purple-400 font-bold border border-purple-800 px-1 rounded" title={virtualHouseName}>VH</div>
+            )}
         </div>
     );
 };
 
 const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
-    const { currentNpcType, nextNpcType, houseId, slotIndex, forceStore } = task;
+    const { currentNpcType, nextNpcType, houseId, slotIndex, forceStore, targetHouseId, targetSlotIndex, virtualHouseName } = task;
     const isStartNewCycle = currentNpcType === NpcType.F;
     const isSRank = nextNpcType === NpcType.S;
-
-    // Resolve stock info to use the prop and avoid build errors
     const fStockItem = warehouseItems.find(i => i.id === 'f-pet-stock');
     const fStockCount = fStockItem ? fStockItem.currentStock : 0;
+    const isCrossHouse = targetHouseId !== undefined && targetHouseId !== houseId;
 
     if (isSRank) {
          return (
@@ -126,6 +137,7 @@ const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
                     <h4 className="font-bold text-yellow-400 flex items-center gap-2">
                         <ChampionIcon /> MISSION: COLLECTION
                     </h4>
+                    {virtualHouseName && <p className="text-xs text-purple-400 mt-1">Virtual House: {virtualHouseName}</p>}
                 </div>
                  <ol className="list-decimal list-inside space-y-3 text-sm text-gray-200">
                     <li className="pl-2">
@@ -176,8 +188,9 @@ const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
              <div className="bg-cyan-900/30 p-3 rounded border border-cyan-700/50">
                 <h4 className="font-bold text-cyan-400 flex items-center gap-2">
                     {isStartNewCycle ? <WarehouseIcon /> : <TamerIcon />} 
-                    MISSION: {isStartNewCycle ? 'NEW CYCLE START' : 'UPGRADE & RESTART'}
+                    MISSION: {isStartNewCycle ? 'NEW CYCLE START' : (isCrossHouse ? 'TRANSFER & UPGRADE' : 'UPGRADE & RESTART')}
                 </h4>
+                {virtualHouseName && <p className="text-xs text-purple-400 mt-1 ml-6">Virtual House: {virtualHouseName}</p>}
             </div>
             <ol className="list-decimal list-inside space-y-3 text-sm text-gray-200">
                 <li className="pl-2">
@@ -199,10 +212,14 @@ const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
                     </li>
                 )}
                 <li className="pl-2">
-                    Return to House #{houseId}.
+                    {isCrossHouse ? (
+                        <span>Go to <span className="text-purple-400 font-bold">House #{targetHouseId}</span>.</span>
+                    ) : (
+                        <span>Return to House #{houseId}.</span>
+                    )}
                 </li>
                 <li className="pl-2">
-                    Place the <PetBadge type={nextNpcType!} /> pet into Slot {slotIndex + 1}.
+                    Place the <PetBadge type={nextNpcType!} /> pet into Slot {(targetSlotIndex || slotIndex) + 1}.
                 </li>
                  <li className="pl-2">
                     Confirm the timer has started.
@@ -289,7 +306,10 @@ const TaskTable: React.FC<{
                                                 )}
                                             </td>
                                         )}
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-200">#{task.houseId}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-200">
+                                            #{task.houseId}
+                                            <div className="text-xs text-gray-400">Slot {task.slotIndex + 1}</div>
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <PetBadge type={task.currentNpcType} />
                                         </td>
@@ -312,7 +332,7 @@ const TaskTable: React.FC<{
 
 const DailyBriefing: React.FC<DailyBriefingProps> = ({ 
     houses, cycleTimes, warehouseItems, setHouses, setWarehouseItems, 
-    onUpdateCollectedPets, checkinTimes, simulatedTime, completedTaskLog, setCompletedTaskLog 
+    onUpdateCollectedPets, checkinTimes, simulatedTime, completedTaskLog, setCompletedTaskLog, virtualHouses
 }) => {
   const [dueTasks, setDueTasks] = useState<DailyBriefingTask[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<DailyBriefingTask[]>([]);
@@ -326,31 +346,23 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
 
   const calculateBriefing = useCallback(() => {
     const now = simulatedTime || Date.now();
-    const { dueTasks, upcomingTasks, nextCheckin } = generateDailyBriefing(houses, cycleTimes, checkinTimes, now);
+    const { dueTasks, upcomingTasks, nextCheckin } = generateDailyBriefing(houses, cycleTimes, checkinTimes, virtualHouses, now);
     
     setDueTasks(dueTasks);
     setUpcomingTasks(upcomingTasks);
     setNextCheckin(nextCheckin);
 
-    // --- History Session Logic & Auto-Pruning ---
     if (checkinTimes.length > 0 && completedTaskLog.length > 0) {
         const nowDate = new Date(now);
         const sortedCheckins = [...checkinTimes].sort((a,b) => a-b);
-        
-        // Calculate check-in points for the last 48 hours to determine session boundaries
         const candidates: Date[] = [];
         for (let i = -2; i <= 0; i++) {
             sortedCheckins.forEach(h => {
                 candidates.push(new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + i, h, 0, 0));
             });
         }
-        // Sort descending (newest first)
         candidates.sort((a,b) => b.getTime() - a.getTime());
-        
-        // First timestamp <= now is Current Session Start
         const currentSessionStart = candidates.find(d => d.getTime() <= now);
-        
-        // The next one down is Previous Session Start
         let cutoffTime = 0;
         if (currentSessionStart) {
             const prevIndex = candidates.indexOf(currentSessionStart) + 1;
@@ -358,23 +370,17 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
                 cutoffTime = candidates[prevIndex].getTime();
             }
         }
-
-        // Filter logs: Keep only tasks completed AFTER the cutoff time
         const recentLogs = completedTaskLog.filter(log => log.timestamp > cutoffTime);
-
-        // Pruning Logic: If we have logs older than cutoff, permanently delete them from state.
         if (recentLogs.length < completedTaskLog.length) {
             setCompletedTaskLog(recentLogs);
         }
-        
-        // Sort for display
         recentLogs.sort((a,b) => b.timestamp - a.timestamp);
         setRecentHistoryTasks(recentLogs.map(l => l.task));
     } else {
         setRecentHistoryTasks([]);
     }
 
-  }, [houses, cycleTimes, checkinTimes, simulatedTime, completedTaskLog, setCompletedTaskLog]);
+  }, [houses, cycleTimes, checkinTimes, simulatedTime, completedTaskLog, setCompletedTaskLog, virtualHouses]);
 
   useEffect(() => {
     calculateBriefing();
@@ -392,11 +398,10 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       const logEntry = completedTaskLog.find(l => 
           l.task.houseId === task.houseId && 
           l.task.slotIndex === task.slotIndex && 
-          l.task.currentPet === task.currentPet // Basic matching
+          l.task.currentPet === task.currentPet
       );
 
       if (logEntry) {
-          // Construct explanation string
           const parts = [];
           parts.push(`1. Restore ${logEntry.changes.sourcePetType}-Pet to House #${logEntry.changes.sourceHouseId} (Slot ${logEntry.changes.sourceSlotIndex + 1}).`);
           if (logEntry.changes.targetHouseId) {
@@ -447,9 +452,9 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
         onUpdateCollectedPets(NpcType.S, 1);
         logEntry.changes.targetPetType = NpcType.S; 
     } else if (task.forceStore) {
-         // --- INDEPENDENT MODE LOGIC: Force to Warehouse ---
+         // Independent Harvest to Warehouse
          const wipMap: { [key in NpcType]?: string } = {
-            [NpcType.F]: 'f-pet-wip-error', // Not usually stored, fallback to logic check
+            [NpcType.F]: 'f-pet-wip-error',
             [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
             [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
             [NpcType.A]: 'a-pet-wip',
@@ -460,29 +465,15 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
             wipItem.currentStock += 1;
             logEntry.changes.warehouseWipId = wipItemId;
             logEntry.changes.targetPetType = outputPetType;
-        } else {
-             // If F pet or unknown type, assume no warehouse item exists (or custom logic needed)
-             // For now, we log it but don't crash. F-Pet "harvest to warehouse" is rare but handled gracefully.
-             console.warn("No WIP warehouse item found for type:", outputPetType);
         }
 
-    } else {
-        // --- LINKED MODE LOGIC: Find next slot ---
-        let nextSlotLocation: { houseId: number; slotIndex: number } | null = null;
-        for (const house of newHouses) {
-            for (let i = 0; i < house.slots.length; i++) {
-                if (house.slots[i].npc.type === outputPetType && !house.slots[i].pet.name) {
-                    nextSlotLocation = { houseId: house.id, slotIndex: i };
-                    break;
-                }
-            }
-            if (nextSlotLocation) break;
-        }
-
-        if (nextSlotLocation) {
-            const targetHouse = newHouses.find((h: House) => h.id === nextSlotLocation!.houseId);
-            const targetSlot = targetHouse.slots[nextSlotLocation.slotIndex];
+    } else if (task.targetHouseId !== undefined && task.targetSlotIndex !== undefined) {
+        // Explicit Routing (Linked or Virtual)
+        const targetHouse = newHouses.find((h: House) => h.id === task.targetHouseId);
+        if (targetHouse) {
+            const targetSlot = targetHouse.slots[task.targetSlotIndex];
             const cycle = cycleTimes.find(c => c.npcType === outputPetType);
+            
             if (cycle) {
                 const startTime = now;
                 targetSlot.pet = {
@@ -495,26 +486,26 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
                     expirationDate.setDate(expirationDate.getDate() + targetSlot.npc.duration);
                     targetSlot.npc.expiration = expirationDate.toISOString();
                 }
+                
+                // Log Target Info
+                logEntry.changes.targetHouseId = task.targetHouseId;
+                logEntry.changes.targetSlotIndex = task.targetSlotIndex;
+                logEntry.changes.targetPetType = outputPetType;
             }
-            // Log Target Info
-            logEntry.changes.targetHouseId = nextSlotLocation.houseId;
-            logEntry.changes.targetSlotIndex = nextSlotLocation.slotIndex;
-            logEntry.changes.targetPetType = outputPetType;
-
-        } else {
-            // Fallback if no linked slot found: Store in WIP
-            const wipMap: { [key in NpcType]?: string } = {
+        }
+    } else {
+        // Fallback safe store if routing failed
+         const wipMap: { [key in NpcType]?: string } = {
                 [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
                 [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
                 [NpcType.A]: 'a-pet-wip',
             };
-            const wipItemId = wipMap[outputPetType];
-            const wipItem = newWarehouseItems.find((item: WarehouseItem) => item.id === wipItemId);
-            if (wipItem) {
-                wipItem.currentStock += 1;
-                logEntry.changes.warehouseWipId = wipItemId;
-                logEntry.changes.targetPetType = outputPetType;
-            }
+        const wipItemId = wipMap[outputPetType];
+        const wipItem = newWarehouseItems.find((item: WarehouseItem) => item.id === wipItemId);
+        if (wipItem) {
+            wipItem.currentStock += 1;
+            logEntry.changes.warehouseWipId = wipItemId;
+            logEntry.changes.targetPetType = outputPetType;
         }
     }
 
@@ -532,7 +523,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
 
     if (inputItem && inputItem.currentStock > 0) {
         inputItem.currentStock -= 1;
-        logEntry.changes.warehouseConsumedId = inputItemId; // Log consumption
+        logEntry.changes.warehouseConsumedId = inputItemId; 
 
         const cycle = cycleTimes.find(c => c.npcType === currentNpcType);
         if (cycle) {

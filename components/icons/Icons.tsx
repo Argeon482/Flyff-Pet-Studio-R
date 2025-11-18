@@ -98,3 +98,9 @@ export const UnlinkedIcon: React.FC = () => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 13.875a4.002 4.002 0 00-5.703-5.703l-1.102 1.101 m5.703 5.703l1.102 1.101a4.002 4.002 0 005.703-5.703l-4-4a4.002 4.002 0 00-5.703 5.703" />
     </svg>
 );
+
+export const VirtualIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    </svg>
+);

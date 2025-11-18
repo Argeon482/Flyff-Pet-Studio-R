@@ -19,6 +19,8 @@ export interface NpcSlot {
   type: NpcType | null;
   expiration: string | null;
   duration: 7 | 15 | null;
+  mode: 'LINKED' | 'SOLO'; // LINKED = flows to next slot in house; SOLO = managed by Virtual House or manual
+  virtualHouseId?: string; // ID of the Virtual House this slot belongs to (if any)
 }
 
 export interface PetSlot {
@@ -30,14 +32,24 @@ export interface PetSlot {
 export interface House {
   id: number;
   division: Division;
-  label: string; // Custom name for the house
-  productionMode: 'LINKED' | 'INDEPENDENT'; // Determines if slots flow to each other
+  label: string;
   serviceBlock: string;
   perfectionAttempts: number;
   slots: {
     npc: NpcSlot;
     pet: PetSlot;
   }[];
+}
+
+// A logical grouping of slots that form a production chain, independent of physical houses
+export interface VirtualHouse {
+    id: string;
+    name: string;
+    // The ordered list of physical slots that make up this virtual chain
+    slots: {
+        houseId: number;
+        slotIndex: number;
+    }[];
 }
 
 export interface WarehouseItem {
@@ -61,8 +73,12 @@ export interface DailyBriefingTask {
   estFinishTime: string;
   serviceBlock: string;
   currentNpcType: NpcType;
-  nextNpcType: NpcType | null; // For swaps
-  forceStore?: boolean; // If true, harvest to warehouse instead of next slot
+  nextNpcType: NpcType | null;
+  forceStore?: boolean; 
+  // Explicit routing instructions
+  targetHouseId?: number; 
+  targetSlotIndex?: number;
+  virtualHouseName?: string; // For display purposes
 }
 
 export interface DailyBriefingData {
@@ -104,7 +120,7 @@ export interface ProjectedProfit {
     npcExpenses: number;
     perfectionExpenses: number;
     netProfit: number;
-    sPetsCount: number; // Renamed from sPetsPerWeek to be generic for timeframes
+    sPetsCount: number;
 }
 
 export interface DashboardAnalytics {
@@ -122,7 +138,6 @@ export enum HouseTemplate {
     EMPTY = 'EMPTY',
 }
 
-// Stores the details of a completed task to allow for history display and undoing
 export interface CompletedTaskLog {
     id: string;
     task: DailyBriefingTask;
@@ -130,16 +145,14 @@ export interface CompletedTaskLog {
     changes: {
         sourceHouseId: number;
         sourceSlotIndex: number;
-        sourcePetType: NpcType; // The pet that finished
+        sourcePetType: NpcType;
         targetHouseId?: number;
         targetSlotIndex?: number;
-        targetPetType?: NpcType; // The pet created in the target
-        warehouseWipId?: string; // If moved to WIP
-        warehouseConsumedId?: string; // If stock was consumed
+        targetPetType?: NpcType;
+        warehouseWipId?: string;
+        warehouseConsumedId?: string;
     }
 }
-
-// === Data State Types ===
 
 export interface AppState {
     houses: House[];
@@ -149,5 +162,6 @@ export interface AppState {
     collectedPets: CollectedPet[];
     salesHistory: SaleRecord[];
     checkinTimes: number[];
-    completedTaskLog: CompletedTaskLog[]; // New history log
+    completedTaskLog: CompletedTaskLog[];
+    virtualHouses: VirtualHouse[]; // New registry for cross-house chains
 }

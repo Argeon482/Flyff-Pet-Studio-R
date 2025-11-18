@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot, CompletedTaskLog } from './types';
+import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot, CompletedTaskLog, VirtualHouse } from './types';
 import { CYCLE_TIMES, INITIAL_APP_STATE } from './constants';
 import { migrateState } from './services/stateMigration';
 import * as examples from './examples';
@@ -13,9 +13,10 @@ import PetSales from './components/PetSales';
 import HelpModal from './components/HelpModal';
 import ScheduleModal from './components/ScheduleModal';
 import ExampleModeControls from './components/ExampleModeControls';
-import SaveLoadModal from './components/SaveLoadModal'; // Re-imported after reverting inline change
+import SaveLoadModal from './components/SaveLoadModal';
+import VirtualHouseModal from './components/VirtualHouseModal';
 
-// UTILITY FUNCTION (Moved back to App.tsx after revert)
+// UTILITY FUNCTION
 const calculateAndAssignServiceBlocks = (houses: House[]): House[] => {
     const groupedByDivision: Record<string, House[]> = {};
     for (const house of houses) {
@@ -55,21 +56,19 @@ const App: React.FC = () => {
       const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (savedStateJSON) {
         const loadedState = JSON.parse(savedStateJSON);
-        // Use the migration service to ensure forward compatibility
         return migrateState(loadedState);
       }
     } catch (error) {
       console.error("Failed to load or parse state from localStorage:", error);
-      // If parsing fails, the data is corrupt. Remove it to prevent future load failures.
       localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
-    // Return a fresh copy of the initial state if nothing is loaded or if there's an error.
     return JSON.parse(JSON.stringify(INITIAL_APP_STATE));
   });
 
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isSaveLoadModalOpen, setIsSaveLoadModalOpen] = useState(false);
+  const [isVirtualHouseModalOpen, setIsVirtualHouseModalOpen] = useState(false);
 
   // Playground Mode State
   const [isInExampleMode, setIsInExampleMode] = useState(false);
@@ -94,7 +93,8 @@ const App: React.FC = () => {
           salesHistory: exampleData.salesHistory,
           prices: appState.prices, 
           checkinTimes: appState.checkinTimes,
-          completedTaskLog: [], // Clear log for examples
+          completedTaskLog: [],
+          virtualHouses: [], // Examples don't have virtual houses yet
       });
   };
 
@@ -115,7 +115,6 @@ const App: React.FC = () => {
   };
 
   const handleLoadState = useCallback((newState: AppState) => {
-    // Use the migration service to ensure forward compatibility when loading from a code
     const migratedState = migrateState(newState);
     setAppState(migratedState);
     alert('State loaded successfully!');
@@ -132,6 +131,38 @@ const App: React.FC = () => {
       setAppState(prev => {
           const newLog = typeof updater === 'function' ? updater(prev.completedTaskLog) : updater;
           return { ...prev, completedTaskLog: newLog };
+      });
+  }, []);
+  
+  const handleUpdateVirtualHouses = useCallback((updater: React.SetStateAction<VirtualHouse[]>) => {
+      setAppState(prev => {
+          const newVirtualHouses = typeof updater === 'function' ? updater(prev.virtualHouses) : updater;
+          
+          // When virtual houses change, we need to update the slots in the physical houses
+          // to reflect their assignment (adding/removing the virtualHouseId)
+          const newHouses = prev.houses.map(house => ({
+              ...house,
+              slots: house.slots.map((slot, idx) => {
+                  // Check if this slot belongs to any virtual house
+                  const vHouse = newVirtualHouses.find(vh => 
+                      vh.slots.some(s => s.houseId === house.id && s.slotIndex === idx)
+                  );
+                  
+                  // Only update if the status has changed
+                  if (slot.npc.virtualHouseId !== (vHouse ? vHouse.id : undefined)) {
+                      return {
+                          ...slot,
+                          npc: {
+                              ...slot.npc,
+                              virtualHouseId: vHouse ? vHouse.id : undefined
+                          }
+                      };
+                  }
+                  return slot;
+              })
+          }));
+
+          return { ...prev, virtualHouses: newVirtualHouses, houses: newHouses };
       });
   }, []);
 
@@ -159,6 +190,7 @@ const App: React.FC = () => {
                     type,
                     expiration: null,
                     duration: type ? 15 : null,
+                    mode: 'LINKED', // Default to Linked
                 },
                 pet: { name: null, startTime: null, finishTime: null },
             });
@@ -202,7 +234,6 @@ const App: React.FC = () => {
                 id: newId,
                 division: newHouseConfig.division,
                 label: `House #${newId}`,
-                productionMode: 'LINKED',
                 serviceBlock: '',
                 perfectionAttempts: 0,
                 slots: newHouseConfig.slots,
@@ -334,7 +365,7 @@ const App: React.FC = () => {
   }, [simulatedTime, appState.checkinTimes]);
 
   const renderView = () => {
-    const { houses, warehouseItems, cashBalance, prices, collectedPets, salesHistory, checkinTimes, completedTaskLog } = appState;
+    const { houses, warehouseItems, cashBalance, prices, collectedPets, salesHistory, checkinTimes, completedTaskLog, virtualHouses } = appState;
     switch (currentView) {
       case View.DASHBOARD:
         return <Dashboard 
@@ -348,11 +379,14 @@ const App: React.FC = () => {
             onUpdateCollectedPets={updateCollectedPets} setHouses={setHouses}
             setWarehouseItems={setWarehouseItems} checkinTimes={checkinTimes} simulatedTime={simulatedTime}
             completedTaskLog={completedTaskLog} setCompletedTaskLog={setCompletedTaskLog}
+            virtualHouses={virtualHouses}
         />;
       case View.FACTORY_FLOOR:
         return <FactoryFloor
             houses={houses} onUpdateHouse={updateHouse} cycleTimes={CYCLE_TIMES} onSetHouses={setHouses}
             onAddHousesFromTemplate={addHousesFromTemplate} onRemoveHouse={removeHouse} simulatedTime={simulatedTime}
+            virtualHouses={virtualHouses}
+            onOpenVirtualHouseModal={() => setIsVirtualHouseModalOpen(true)}
         />;
       case View.WAREHOUSE:
         return <Warehouse items={warehouseItems} onUpdateItem={updateWarehouseItem} />;
@@ -401,6 +435,13 @@ const App: React.FC = () => {
         appState={appState}
         onLoadState={handleLoadState}
        />}
+      {isVirtualHouseModalOpen && <VirtualHouseModal
+        isOpen={isVirtualHouseModalOpen}
+        onClose={() => setIsVirtualHouseModalOpen(false)}
+        houses={appState.houses}
+        virtualHouses={appState.virtualHouses}
+        onUpdateVirtualHouses={handleUpdateVirtualHouses}
+      />}
     </div>
   );
 };

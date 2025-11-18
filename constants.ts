@@ -1,4 +1,5 @@
-import { House, NpcType, WarehouseItem, CycleTime, PriceConfig, CollectedPet, SaleRecord, Division, AppState, CompletedTaskLog } from './types';
+
+import { House, NpcType, WarehouseItem, CycleTime, PriceConfig, CollectedPet, SaleRecord, Division, AppState, CompletedTaskLog, VirtualHouse } from './types';
 
 export const CYCLE_TIMES: CycleTime[] = [
   { npcType: NpcType.F, time: 10 },
@@ -35,6 +36,7 @@ export const INITIAL_PRICES: PriceConfig = {
 export const INITIAL_COLLECTED_PETS: CollectedPet[] = [];
 export const INITIAL_SALES_HISTORY: SaleRecord[] = [];
 export const INITIAL_COMPLETED_TASK_LOG: CompletedTaskLog[] = [];
+export const INITIAL_VIRTUAL_HOUSES: VirtualHouse[] = [];
 
 // The application now starts with a blank slate, allowing the user to build their factory.
 export const INITIAL_HOUSES: House[] = [];
@@ -54,4 +56,5 @@ export const INITIAL_APP_STATE: AppState = {
   salesHistory: INITIAL_SALES_HISTORY,
   checkinTimes: DEFAULT_CHECKIN_TIMES,
   completedTaskLog: INITIAL_COMPLETED_TASK_LOG,
+  virtualHouses: INITIAL_VIRTUAL_HOUSES,
 };

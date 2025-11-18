@@ -1,5 +1,5 @@
 
-import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division, DashboardAnalytics } from "../types";
+import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division, DashboardAnalytics, VirtualHouse } from "../types";
 
 // Calculates the THEORETICAL MAXIMUM throughput of the current layout
 const calculateProjectedProfit = (
@@ -16,21 +16,16 @@ const calculateProjectedProfit = (
     const fullCycleTimeHours = cycleTimes.reduce((sum, ct) => sum + ct.time, 0);
     const finalPetPrice = prices.petPrices[NpcType.S] || 0;
 
-    // Calculate average idle time based on the number of check-ins per 24 hours
     const numCheckins = checkinTimes.length;
     const avgHoursBetweenCheckins = 24 / numCheckins;
-    // On average, a pet finishes halfway between check-ins and waits for the next one.
     const avgIdleTimeHours = avgHoursBetweenCheckins / 2;
-    
     const totalEffectiveCycleTime = fullCycleTimeHours + avgIdleTimeHours;
 
-    // How many full pipelines can one slot complete in a week?
     const pipelinesPerSlotPerWeek = (7 * 24) / totalEffectiveCycleTime;
     const sPetsCount = activeSlots.length * pipelinesPerSlotPerWeek;
     
     const grossRevenue = sPetsCount * finalPetPrice;
 
-    // Cost of NPCs for all active slots, considering their individual durations
     let npcExpenses = 0;
     activeSlots.forEach(slot => {
         const duration = slot.npc.duration;
@@ -77,7 +72,6 @@ const calculateActualWeeklyFinances = (
             if (slot.npc.expiration) {
                 const expirationTime = new Date(slot.npc.expiration).getTime();
                 if (expirationTime > now && expirationTime <= endOfWeek) {
-                    // Assume we re-hire for the same duration
                     const cost = slot.npc.duration === 7 ? prices.npcCost7Day : prices.npcCost15Day;
                     npcExpenses += cost;
                 }
@@ -85,35 +79,34 @@ const calculateActualWeeklyFinances = (
         });
     });
 
-    // Note: Perfection expenses are harder to predict "actually" without knowing user intent,
-    // so we leave them as 0 for the "Cash Flow" view, or we could check the Champion house.
-    // For now, let's assume 0 unless we track specific "Sacrifice" tasks.
     const perfectionExpenses = 0; 
-    
     const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
 
     return { grossRevenue, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
 };
 
 
-export const generateDailyBriefing = (houses: House[], cycleTimes: CycleTime[], checkinTimes: number[], currentTime?: number): DailyBriefingData => {
+// RE-IMPLEMENTATION with VirtualHouses support
+export const generateDailyBriefing = (
+    houses: House[], 
+    cycleTimes: CycleTime[], 
+    checkinTimes: number[], 
+    virtualHouses: VirtualHouse[],
+    currentTime?: number
+): DailyBriefingData => {
     const now = currentTime ? new Date(currentTime) : new Date();
-    
     const sortedCheckinHours = [...checkinTimes].sort((a,b) => a - b);
 
-    // Generate today's, yesterday's, and tomorrow's check-in Date objects for robust lookup
     const allCheckinDates = [
         ...sortedCheckinHours.map(hour => new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, hour, 0, 0)),
         ...sortedCheckinHours.map(hour => new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0)),
         ...sortedCheckinHours.map(hour => new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, hour, 0, 0))
     ];
 
-    // Find the next check-in time from now
     let nextCheckin = allCheckinDates.find(time => time.getTime() > now.getTime());
     if (!nextCheckin) {
-      // Fallback in case of an empty schedule, though UI should prevent this.
       const tomorrow = new Date(now);
-      tomorrow.setDate(now.getDate() + 2); // Go further out to be safe
+      tomorrow.setDate(now.getDate() + 2);
       nextCheckin = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), sortedCheckinHours[0] || 9, 0, 0);
     }
 
@@ -136,64 +129,109 @@ export const generateDailyBriefing = (houses: House[], cycleTimes: CycleTime[], 
             const currentRankIndex = npcRankOrder.indexOf(currentNpcType);
             const currentPetName = slot.pet.name || `${currentNpcType}-Pet`;
             const finishTime = new Date(slot.pet.finishTime || 0).toLocaleString();
-            
-            const house = houses.find(h => h.id === slot.houseId);
+            const nextRank = npcRankOrder[currentRankIndex + 1] || NpcType.S; // Default to S if at end
 
-            if (currentRankIndex === npcRankOrder.length - 1) { // Final NPC is 'A'
+            // Determine Task Logic based on Mode
+            const mode = slot.npc.mode || 'LINKED';
+            let taskName = `Harvest ${currentNpcType} & Start ${nextRank}`;
+            if (currentNpcType === NpcType.F) taskName = `Harvest F & Start E (Use Stock)`;
+
+            // Base Task Object
+            const taskBase: DailyBriefingTask = {
+                houseId: slot.houseId,
+                slotIndex: slot.slotIndex,
+                currentPet: currentPetName,
+                task: taskName,
+                estFinishTime: finishTime,
+                serviceBlock: slot.serviceBlock,
+                currentNpcType,
+                nextNpcType: nextRank,
+            };
+
+            // --- LOGIC BRANCHING ---
+
+            // 1. Independent / Flexible Solo
+            if (mode === 'SOLO' && !slot.npc.virtualHouseId) {
                 return {
-                    houseId: slot.houseId,
-                    slotIndex: slot.slotIndex,
-                    currentPet: currentPetName,
-                    task: `Claim Sacri S for Sale`, // Specific task name for S-Rank
-                    estFinishTime: finishTime,
-                    serviceBlock: slot.serviceBlock,
-                    currentNpcType,
-                    nextNpcType: NpcType.S, // Use S as a signal for collection
+                    ...taskBase,
+                    task: `Harvest ${currentNpcType} to Warehouse`,
+                    nextNpcType: currentNpcType, // Loops on itself or just empties
+                    forceStore: true
                 };
-            } else {
-                // Check for INDEPENDENT mode logic
-                const isIndependent = house?.productionMode === 'INDEPENDENT';
+            }
 
-                if (isIndependent) {
+            // 2. Virtual House Chain
+            if (mode === 'SOLO' && slot.npc.virtualHouseId) {
+                const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
+                if (vHouse) {
+                    const currentVIndex = vHouse.slots.findIndex(s => s.houseId === slot.houseId && s.slotIndex === slot.slotIndex);
+                    
+                    if (currentVIndex !== -1 && currentVIndex < vHouse.slots.length - 1) {
+                        // Move to next slot in virtual chain
+                        const nextVSlot = vHouse.slots[currentVIndex + 1];
+                        return {
+                            ...taskBase,
+                            task: `Transfer to ${vHouse.name} (Pos ${currentVIndex + 2})`,
+                            targetHouseId: nextVSlot.houseId,
+                            targetSlotIndex: nextVSlot.slotIndex,
+                            virtualHouseName: vHouse.name
+                        };
+                    } else {
+                        // Last slot in virtual chain -> S Pet Collection
+                        return {
+                            ...taskBase,
+                            task: `Claim Sacri S for Sale (${vHouse.name})`,
+                            nextNpcType: NpcType.S
+                        };
+                    }
+                }
+                // Fallback if VHouse not found
+                return { ...taskBase, forceStore: true, task: `Harvest ${currentNpcType} (VH Error)` };
+            }
+
+            // 3. Linked (Physical House Chain)
+            // Look for next slot in same house
+            const house = houses.find(h => h.id === slot.houseId);
+            if (house) {
+                // Naive check: Next physical slot index
+                // A more robust check would verify the NPC type matches 'nextRank', 
+                // but for 'Linked' we assume standard linear progression 0->1->2.
+                // Or we scan the house for the correct NPC type.
+                
+                if (currentRankIndex === npcRankOrder.length - 1) { // 'A' Pet
                     return {
-                         houseId: slot.houseId,
-                         slotIndex: slot.slotIndex,
-                         currentPet: currentPetName,
-                         task: `Harvest ${currentNpcType} to Warehouse`,
-                         estFinishTime: finishTime,
-                         serviceBlock: slot.serviceBlock,
-                         currentNpcType,
-                         nextNpcType: currentNpcType, // It produces a pet of the same type as the NPC (e.g. E NPC -> E Pet)
-                         forceStore: true
+                        ...taskBase,
+                        task: `Claim Sacri S for Sale`,
+                        nextNpcType: NpcType.S
                     };
                 }
 
-                const nextRank = npcRankOrder[currentRankIndex + 1];
-                
-                // Logic to distinguish simple start vs upgrade loop
-                let taskName = `Harvest ${currentNpcType} & Start ${nextRank}`;
-                if (currentNpcType === NpcType.F) {
-                    taskName = `Harvest F & Start E (Use Stock)`;
+                // Scan house for the target NPC type
+                const targetSlotIndex = house.slots.findIndex(s => s.npc.type === nextRank);
+                if (targetSlotIndex !== -1) {
+                     return {
+                        ...taskBase,
+                        targetHouseId: house.id,
+                        targetSlotIndex: targetSlotIndex
+                    };
+                } else {
+                    // Broken Link: Can't find next NPC in same house
+                    return {
+                        ...taskBase,
+                        task: `Harvest ${currentNpcType} to Warehouse (Link Broken)`,
+                        forceStore: true
+                    };
                 }
-
-                return {
-                    houseId: slot.houseId,
-                    slotIndex: slot.slotIndex,
-                    currentPet: currentPetName,
-                    task: taskName,
-                    estFinishTime: finishTime,
-                    serviceBlock: slot.serviceBlock,
-                    currentNpcType,
-                    nextNpcType: nextRank,
-                };
             }
+
+            return taskBase;
+
         }).filter((task): task is DailyBriefingTask => task !== null && !!task.currentNpcType);
     };
     
     const dueTasks = mapSlotsToTasks(dueSlots);
     const upcomingTasks = mapSlotsToTasks(upcomingSlots);
 
-    // Sort dueTasks by NPC rank descending to prioritize end-of-line tasks
     dueTasks.sort((a, b) => {
         const rankA = petRankOrder.indexOf(a.nextNpcType!);
         const rankB = petRankOrder.indexOf(b.nextNpcType!);
@@ -262,5 +300,4 @@ export const generateDashboardAnalytics = (
     return { alerts, nextAction, theoreticalMaxWeekly, actualNext7Days };
 };
 
-// Export for use in the comparison modal
 export { calculateProjectedProfit };
