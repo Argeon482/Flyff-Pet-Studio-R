@@ -39,11 +39,12 @@ const PetBadge: React.FC<{ type: NpcType }> = ({ type }) => {
 const BatchTaskVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
     // Count types
     const counts: Partial<Record<NpcType, number>> = {};
-    task.subTasks.forEach(st => {
+    // Defensive coding: Ensure subTasks exists
+    (task.subTasks || []).forEach(st => {
         counts[st.currentNpcType] = (counts[st.currentNpcType] || 0) + 1;
     });
 
-    const stockReq = task.requiredWarehouseItems.find(i => i.itemId === 'f-pet-stock');
+    const stockReq = task.requiredWarehouseItems?.find(i => i.itemId === 'f-pet-stock');
     const currentStock = warehouseItems.find(i => i.id === 'f-pet-stock')?.currentStock || 0;
     const hasStock = !stockReq || currentStock >= stockReq.count;
 
@@ -69,17 +70,18 @@ const BatchTaskVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
 };
 
 const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
-    const stockReq = task.requiredWarehouseItems.find(i => i.itemId === 'f-pet-stock');
+    const subTasks = task.subTasks || [];
+    const stockReq = task.requiredWarehouseItems?.find(i => i.itemId === 'f-pet-stock');
     const currentStock = warehouseItems.find(i => i.id === 'f-pet-stock')?.currentStock || 0;
     const hasStock = !stockReq || currentStock >= stockReq.count;
 
-    const harvestList = task.subTasks.map(st => st.currentNpcType).join(', ');
-    const upgradeList = task.subTasks.filter(st => st.actionType === 'HARVEST_AND_RESTART' || (st.actionType as any) === 'COLLECT_S' && st.nextNpcType === NpcType.S).map(st => `${st.currentNpcType}→${st.nextNpcType}`).join(', ');
+    const harvestList = subTasks.map(st => st.currentNpcType).join(', ');
+    const upgradeList = subTasks.filter(st => st.actionType === 'HARVEST_AND_RESTART' || (st.actionType as any) === 'COLLECT_S' && st.nextNpcType === NpcType.S).map(st => `${st.currentNpcType}→${st.nextNpcType}`).join(', ');
     
     // Group placements by location
     const placements: string[] = [];
     // 1. Place items back in current house (from F-Stock or upgraded pets)
-    const currentHousePlacements = task.subTasks.filter(st => 
+    const currentHousePlacements = subTasks.filter(st => 
         st.actionType === 'HARVEST_AND_RESTART' && (st.targetHouseId === task.houseId || !st.targetHouseId)
     );
     if (currentHousePlacements.length > 0) {
@@ -87,13 +89,13 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
     }
 
     // 2. Cross-House placements
-    const crossHouse = task.subTasks.filter(st => st.targetHouseId && st.targetHouseId !== task.houseId);
+    const crossHouse = subTasks.filter(st => st.targetHouseId && st.targetHouseId !== task.houseId);
     crossHouse.forEach(ch => {
         placements.push(`Go to House #${ch.targetHouseId}: Place ${ch.nextNpcType} (Slot ${(ch.targetSlotIndex || 0) + 1})`);
     });
 
     // 3. Warehouse deposits
-    const deposits = task.subTasks.filter(st => st.actionType === 'HARVEST_AND_STORE');
+    const deposits = subTasks.filter(st => st.actionType === 'HARVEST_AND_STORE');
     
     return (
         <div className="space-y-5 text-sm text-gray-200">
@@ -161,7 +163,7 @@ const TaskTable: React.FC<{
     warehouseItems?: WarehouseItem[];
 }> = ({ tasks, title, isInteractive, onTaskComplete, completedTaskIds, activeTaskId, isHistoryMode, onUndo, warehouseItems = [] }) => {
     
-    if (tasks.length === 0) {
+    if (!tasks || tasks.length === 0) {
         return (
              <div className="mb-8">
                 <h3 className="text-xl font-semibold text-gray-200 border-b-2 border-gray-700 pb-2 mb-4">{title}</h3>
@@ -227,7 +229,7 @@ const TaskTable: React.FC<{
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-200">
                                             #{task.houseId}
                                             <div className="text-xs text-gray-500 font-normal">
-                                                {task.subTasks.length} Task{task.subTasks.length > 1 ? 's' : ''}
+                                                {(task.subTasks || []).length} Task{(task.subTasks || []).length > 1 ? 's' : ''}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
@@ -315,7 +317,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       const logEntry = completedTaskLog.find(l => l.task.id === task.id);
 
       if (logEntry) {
-          setUndoDetails(`Undo batch: ${task.taskLabel}\nIncludes ${task.subTasks.length} operations.\nThis will reset slots to their finished state.`);
+          setUndoDetails(`Undo batch: ${task.taskLabel}\nIncludes ${(task.subTasks || []).length} operations.\nThis will reset slots to their finished state.`);
           setUndoTask(task);
       }
   };
@@ -323,6 +325,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
   const executeTaskComplete = () => {
     if (!confirmTask) return;
     const task = confirmTask;
+    const subTasks = task.subTasks || [];
 
     let newHouses = JSON.parse(JSON.stringify(houses));
     let newWarehouseItems = JSON.parse(JSON.stringify(warehouseItems));
@@ -331,7 +334,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
     const affectedSlotsSnapshot: CompletedTaskLog['affectedSlots'] = [];
 
     // Execute SubTasks
-    task.subTasks.forEach(st => {
+    subTasks.forEach(st => {
         // Snapshot for Undo
         affectedSlotsSnapshot.push({
             houseId: task.houseId,
@@ -348,10 +351,6 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
         if (st.currentNpcType === NpcType.F) {
              const fStock = newWarehouseItems.find((w: WarehouseItem) => w.id === 'f-pet-stock');
              if (fStock && fStock.currentStock > 0) fStock.currentStock--;
-             
-             // Auto-restart F if staying in house (HARVEST_AND_RESTART implies this for F)
-             // Actually, if HARVEST_AND_RESTART, we assume we use the F-Stock to put F back in.
-             // For other types, we use the upgrade logic below.
         }
 
         // 3. Handle Result (Place or Store)
@@ -359,14 +358,12 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
              onUpdateCollectedPets(NpcType.S, 1);
         } else if (st.actionType === 'HARVEST_AND_STORE') {
              const wipMap: { [key in NpcType]?: string } = {
-                [NpcType.F]: 'f-pet-stock', // Shouldnt happen usually
+                [NpcType.F]: 'f-pet-stock', 
                 [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
                 [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
                 [NpcType.A]: 'a-pet-wip',
             };
-            const itemId = wipMap[st.currentNpcType]; // Store what we harvested? Or next?
-            // If HARVEST_AND_STORE, we assume Independent mode, so we store the Current Type (no upgrade).
-            // Wait, logic in geminiService says: task: Harvest E to Warehouse.
+            const itemId = wipMap[st.currentNpcType]; 
             if (itemId) {
                 const item = newWarehouseItems.find((w: WarehouseItem) => w.id === itemId);
                 if (item) item.currentStock++;
@@ -418,6 +415,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
 
       const logEntry = completedTaskLog[logIndex];
       const task = logEntry.task;
+      const subTasks = task.subTasks || [];
       let newHouses = JSON.parse(JSON.stringify(houses));
       let newWarehouseItems = JSON.parse(JSON.stringify(warehouseItems));
 
@@ -425,7 +423,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       // 1. Restore Source Slots to Finished State
       // 2. Clear Target Slots / Refund Warehouse
       
-      task.subTasks.forEach(st => {
+      subTasks.forEach(st => {
           // Restore Source
           const sourceHouse = newHouses.find((h: House) => h.id === task.houseId);
           const sourceSlot = sourceHouse.slots[st.slotIndex];

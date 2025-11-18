@@ -38,6 +38,12 @@ export const migrateState = (loadedState: Partial<AppState>): AppState => {
     
     if (!migrated.completedTaskLog) {
         migrated.completedTaskLog = [];
+    } else {
+        // CRITICAL FIX: Filter out legacy logs that don't have the new 'subTasks' structure.
+        // Attempting to render old logs without subTasks causes the DailyBriefing to crash.
+        migrated.completedTaskLog = migrated.completedTaskLog.filter((log: any) => 
+            log.task && Array.isArray(log.task.subTasks)
+        );
     }
     
     if (!migrated.virtualHouses) {
