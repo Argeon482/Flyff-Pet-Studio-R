@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { House, DailyBriefingTask, CycleTime, WarehouseItem, NpcType, CompletedTaskLog } from '../types';
 import { generateDailyBriefing } from '../services/geminiService';
@@ -35,13 +36,30 @@ const PetBadge: React.FC<{ type: NpcType }> = ({ type }) => {
 };
 
 const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
-    const { currentNpcType, nextNpcType } = task;
+    const { currentNpcType, nextNpcType, forceStore } = task;
     
     if (nextNpcType === NpcType.S) {
         return (
             <div className="flex items-center gap-2 text-yellow-400">
                 <ChampionIcon />
                 <span className="font-bold text-sm">COLLECTION READY</span>
+            </div>
+        );
+    }
+
+    // Independent Harvest to Warehouse
+    if (forceStore) {
+        return (
+             <div className="flex items-center gap-1.5 text-xs md:text-sm">
+                <div className="flex flex-col items-center text-gray-400">
+                    <div className="bg-gray-700 p-1 rounded text-cyan-400"><HarvestIcon /></div>
+                    <span>Harvest</span>
+                </div>
+                <span className="text-gray-500">→</span>
+                 <div className="flex flex-col items-center text-green-400">
+                    <WarehouseIcon />
+                    <span>Warehouse</span>
+                </div>
             </div>
         );
     }
@@ -93,7 +111,7 @@ const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareho
 };
 
 const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
-    const { currentNpcType, nextNpcType, houseId, slotIndex } = task;
+    const { currentNpcType, nextNpcType, houseId, slotIndex, forceStore } = task;
     const isStartNewCycle = currentNpcType === NpcType.F;
     const isSRank = nextNpcType === NpcType.S;
 
@@ -125,6 +143,32 @@ const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
                 </ol>
             </div>
          )
+    }
+
+    if (forceStore) {
+        return (
+            <div className="space-y-4">
+                 <div className="bg-green-900/30 p-3 rounded border border-green-700/50">
+                    <h4 className="font-bold text-green-400 flex items-center gap-2">
+                        <WarehouseIcon /> MISSION: HARVEST & STORE
+                    </h4>
+                </div>
+                <ol className="list-decimal list-inside space-y-3 text-sm text-gray-200">
+                     <li className="pl-2">
+                        Go to <span className="text-cyan-300 font-bold">House #{houseId}</span>.
+                    </li>
+                    <li className="pl-2">
+                        Harvest the finished <PetBadge type={currentNpcType} /> pet (Slot {slotIndex + 1}).
+                    </li>
+                     <li className="pl-2">
+                         <strong>Do NOT upgrade.</strong> Open Warehouse.
+                    </li>
+                    <li className="pl-2">
+                         Deposit the <PetBadge type={currentNpcType} /> pet into your storage.
+                    </li>
+                </ol>
+            </div>
+        )
     }
 
     return (
@@ -402,7 +446,28 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
     if (outputPetType === NpcType.S) {
         onUpdateCollectedPets(NpcType.S, 1);
         logEntry.changes.targetPetType = NpcType.S; 
+    } else if (task.forceStore) {
+         // --- INDEPENDENT MODE LOGIC: Force to Warehouse ---
+         const wipMap: { [key in NpcType]?: string } = {
+            [NpcType.F]: 'f-pet-wip-error', // Not usually stored, fallback to logic check
+            [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
+            [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
+            [NpcType.A]: 'a-pet-wip',
+        };
+        const wipItemId = wipMap[outputPetType];
+        const wipItem = newWarehouseItems.find((item: WarehouseItem) => item.id === wipItemId);
+        if (wipItem) {
+            wipItem.currentStock += 1;
+            logEntry.changes.warehouseWipId = wipItemId;
+            logEntry.changes.targetPetType = outputPetType;
+        } else {
+             // If F pet or unknown type, assume no warehouse item exists (or custom logic needed)
+             // For now, we log it but don't crash. F-Pet "harvest to warehouse" is rare but handled gracefully.
+             console.warn("No WIP warehouse item found for type:", outputPetType);
+        }
+
     } else {
+        // --- LINKED MODE LOGIC: Find next slot ---
         let nextSlotLocation: { houseId: number; slotIndex: number } | null = null;
         for (const house of newHouses) {
             for (let i = 0; i < house.slots.length; i++) {
@@ -437,6 +502,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
             logEntry.changes.targetPetType = outputPetType;
 
         } else {
+            // Fallback if no linked slot found: Store in WIP
             const wipMap: { [key in NpcType]?: string } = {
                 [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
                 [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
@@ -446,7 +512,6 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
             const wipItem = newWarehouseItems.find((item: WarehouseItem) => item.id === wipItemId);
             if (wipItem) {
                 wipItem.currentStock += 1;
-                // Log Warehouse Info
                 logEntry.changes.warehouseWipId = wipItemId;
                 logEntry.changes.targetPetType = outputPetType;
             }

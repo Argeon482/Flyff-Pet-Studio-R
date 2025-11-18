@@ -1,3 +1,4 @@
+
 import { House, WarehouseItem, CollectedPet, SaleRecord, Division, NpcType } from './types';
 
 const createPet = (npcType: NpcType, hoursAgo: number, totalHours: number) => {
@@ -18,6 +19,7 @@ export const getExample2House = () => ({
     houses: [
         {
             id: 1, division: Division.NURSERY, serviceBlock: 'Nursery Block A',
+            label: 'House #1', productionMode: 'LINKED',
             perfectionAttempts: 0,
             slots: [
                 { npc: createNpc(NpcType.F), pet: createPet(NpcType.F, 2, 10) },
@@ -27,6 +29,7 @@ export const getExample2House = () => ({
         },
         {
             id: 2, division: Division.FACTORY, serviceBlock: 'Factory Block A',
+            label: 'House #2', productionMode: 'LINKED',
             perfectionAttempts: 0,
             slots: [
                 { npc: createNpc(NpcType.C), pet: createPet(NpcType.C, 10, 50) },
@@ -56,6 +59,7 @@ const generate13HousePod = (idStart: number) => {
         const id = idStart + i;
         houses.push({
             id, division: Division.FACTORY, serviceBlock: `Factory Block ${String.fromCharCode(65 + (i % 3))}`,
+            label: `House #${id}`, productionMode: 'LINKED',
             perfectionAttempts: 0,
             slots: [
                 { npc: createNpc(NpcType.D), pet: createPet(NpcType.D, 5 + i * 4, 50) },
@@ -75,6 +79,7 @@ const generate13HousePod = (idStart: number) => {
         const id = idStart + 9 + i;
         houses.push({
             id, division: Division.NURSERY, serviceBlock: 'Nursery Block A',
+            label: `House #${id}`, productionMode: 'LINKED',
             perfectionAttempts: 0,
             slots: [
                 { npc: createNpc(nurseryNpcs[i][0]), pet: createPet(nurseryNpcs[i][0], 1 + i, 10) },
@@ -119,6 +124,7 @@ const generate71HouseBehemoth = () => {
     // 1 Champion House
     houses.push({
         id: 1, division: Division.CHAMPION, serviceBlock: 'Champion',
+        label: 'House #1', productionMode: 'LINKED',
         perfectionAttempts: 0,
         slots: [
             { npc: createNpc(NpcType.F), pet: createPet(NpcType.F, 3, 10) },
@@ -128,8 +134,10 @@ const generate71HouseBehemoth = () => {
     });
     // 20 Armory Houses (Mid-grade fodder)
     for (let i = 0; i < 20; i++) {
+        const id = 2 + i;
         houses.push({
-            id: 2 + i, division: Division.NURSERY, serviceBlock: `Nursery Block ${String.fromCharCode(65 + (i % 3))}`,
+            id, division: Division.NURSERY, serviceBlock: `Nursery Block ${String.fromCharCode(65 + (i % 3))}`,
+            label: `House #${id}`, productionMode: 'LINKED',
             perfectionAttempts: 0,
             slots: [
                 { npc: createNpc(NpcType.F), pet: createPet(NpcType.F, i % 10, 10) },
@@ -140,8 +148,10 @@ const generate71HouseBehemoth = () => {
     }
     // 50 Forge Houses (S-Rank sacrifices)
     for (let i = 0; i < 50; i++) {
+        const id = 22 + i;
          houses.push({
-            id: 22 + i, division: Division.FACTORY, serviceBlock: `Factory Block ${String.fromCharCode(65 + (i % 3))}`,
+            id, division: Division.FACTORY, serviceBlock: `Factory Block ${String.fromCharCode(65 + (i % 3))}`,
+            label: `House #${id}`, productionMode: 'LINKED',
             perfectionAttempts: 0,
             slots: [
                 { npc: createNpc(NpcType.C), pet: createPet(NpcType.C, 20 + i * 2, 50) },

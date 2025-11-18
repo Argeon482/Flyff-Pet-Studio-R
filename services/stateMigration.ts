@@ -1,3 +1,4 @@
+
 import { AppState } from '../types';
 import { INITIAL_APP_STATE } from '../constants';
 
@@ -52,6 +53,15 @@ export const migrateState = (loadedState: Partial<AppState>): AppState => {
     // Ensure completedTaskLog exists (specifically for this migration step)
     if (!migrated.completedTaskLog) {
         migrated.completedTaskLog = [];
+    }
+
+    // Migration for House properties (Labeling & Production Mode)
+    if (migrated.houses) {
+        migrated.houses = migrated.houses.map((h: any) => ({
+            ...h,
+            label: h.label || `House #${h.id}`,
+            productionMode: h.productionMode || 'LINKED'
+        }));
     }
 
     // Ensure it conforms to the AppState type for type safety

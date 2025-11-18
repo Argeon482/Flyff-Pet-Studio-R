@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { House, CycleTime, NpcType, Division, HouseTemplate } from '../types';
 import { DIVISIONS } from '../constants';
 import ConfirmationModal from './ConfirmationModal';
 import AddHouseModal from './AddHouseModal';
+import { LinkedIcon, UnlinkedIcon } from './icons/Icons';
 
 interface FactoryFloorProps {
   houses: House[];
@@ -200,6 +202,10 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
     const [startConfirm, setStartConfirm] = useState<{ houseId: number; slotIndex: number } | null>(null);
     const startConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // State for editing house label
+    const [editingLabelId, setEditingLabelId] = useState<number | null>(null);
+    const [editLabelValue, setEditLabelValue] = useState('');
+
     useEffect(() => {
         // Cleanup timers on unmount
         return () => {
@@ -210,6 +216,13 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
     const handleFieldChange = (houseId: number, field: keyof House, value: any) => {
         const house = houses.find(h => h.id === houseId);
         if (house) onUpdateHouse({ ...house, [field]: value });
+    };
+
+    const handleLabelSave = (houseId: number) => {
+        if (editLabelValue.trim()) {
+            handleFieldChange(houseId, 'label', editLabelValue.trim());
+        }
+        setEditingLabelId(null);
     };
 
     const handleNpcChange = (houseId: number, slotIndex: number, field: keyof House['slots'][0]['npc'], value: any) => {
@@ -391,15 +404,51 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({ houses, onUpdateHouse, cycl
                     <table className="min-w-full divide-y divide-gray-700">
                         <thead className="bg-gray-700/50">
                             <tr>
-                                {['House #', 'Division', 'Service Block', 'Slot 1', 'Slot 2', 'Slot 3', 'Actions'].map(h => <th key={h} className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{h}</th>)}
+                                {['House / Mode', 'Division', 'Service Block', 'Slot 1', 'Slot 2', 'Slot 3', 'Actions'].map(h => <th key={h} className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{h}</th>)}
                             </tr>
                         </thead>
                         <tbody className="bg-gray-800 divide-y divide-gray-700">
                             {houses.map(house => {
                                 const usedNpcTypes = house.slots.map(s => s.npc.type).filter(Boolean);
+                                const isEditingLabel = editingLabelId === house.id;
                                 return (
                                 <tr key={house.id}>
-                                    <td className="px-3 py-4 text-sm font-bold text-gray-200">{house.id}</td>
+                                    <td className="px-3 py-4 align-top">
+                                        <div className="flex flex-col gap-1">
+                                            {isEditingLabel ? (
+                                                <input
+                                                    type="text"
+                                                    value={editLabelValue}
+                                                    onChange={e => setEditLabelValue(e.target.value)}
+                                                    onBlur={() => handleLabelSave(house.id)}
+                                                    onKeyDown={e => e.key === 'Enter' && handleLabelSave(house.id)}
+                                                    className="w-28 bg-gray-600 text-white rounded px-1 py-0.5 text-sm"
+                                                    autoFocus
+                                                />
+                                            ) : (
+                                                <span 
+                                                    onClick={() => {
+                                                        setEditingLabelId(house.id);
+                                                        setEditLabelValue(house.label || `House #${house.id}`);
+                                                    }}
+                                                    className="text-sm font-bold text-gray-200 cursor-pointer hover:text-cyan-400 border-b border-transparent hover:border-cyan-400 transition-colors"
+                                                    title="Click to rename"
+                                                >
+                                                    {house.label || `House #${house.id}`}
+                                                </span>
+                                            )}
+                                            <button
+                                                onClick={() => handleFieldChange(house.id, 'productionMode', house.productionMode === 'INDEPENDENT' ? 'LINKED' : 'INDEPENDENT')}
+                                                className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 transition-colors mt-1 w-fit"
+                                                title={house.productionMode === 'INDEPENDENT' ? 'Switch to Linked Mode (Flows to next slot)' : 'Switch to Independent Mode (Harvests to Warehouse)'}
+                                            >
+                                                {house.productionMode === 'INDEPENDENT' ? <UnlinkedIcon /> : <LinkedIcon />}
+                                                <span className={house.productionMode === 'INDEPENDENT' ? 'text-yellow-400' : 'text-green-400'}>
+                                                    {house.productionMode === 'INDEPENDENT' ? 'Solo' : 'Link'}
+                                                </span>
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td className="px-3 py-4">
                                         <select value={house.division} onChange={e => handleFieldChange(house.id, 'division', e.target.value as Division)} className="w-32 bg-gray-700 text-white rounded p-1">
                                             {DIVISIONS.map(div => <option key={div} value={div}>{div}</option>)}

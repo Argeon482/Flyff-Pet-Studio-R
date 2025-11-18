@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot, CompletedTaskLog } from './types';
 import { CYCLE_TIMES, INITIAL_APP_STATE } from './constants';
@@ -200,6 +201,8 @@ const App: React.FC = () => {
             const newHouse: House = {
                 id: newId,
                 division: newHouseConfig.division,
+                label: `House #${newId}`,
+                productionMode: 'LINKED',
                 serviceBlock: '',
                 perfectionAttempts: 0,
                 slots: newHouseConfig.slots,

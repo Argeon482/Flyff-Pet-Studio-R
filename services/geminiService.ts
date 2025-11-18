@@ -131,14 +131,15 @@ export const generateDailyBriefing = (houses: House[], cycleTimes: CycleTime[], 
     const petRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A, NpcType.S];
 
     const mapSlotsToTasks = (slots: typeof allFinishedSlots): DailyBriefingTask[] => {
-        return slots.map(slot => {
+        return slots.map((slot): DailyBriefingTask => {
             const currentNpcType = slot.npc.type!;
             const currentRankIndex = npcRankOrder.indexOf(currentNpcType);
             const currentPetName = slot.pet.name || `${currentNpcType}-Pet`;
             const finishTime = new Date(slot.pet.finishTime || 0).toLocaleString();
+            
+            const house = houses.find(h => h.id === slot.houseId);
 
             if (currentRankIndex === npcRankOrder.length - 1) { // Final NPC is 'A'
-                const nextPetRank = petRankOrder[petRankOrder.indexOf(currentNpcType) + 1]
                 return {
                     houseId: slot.houseId,
                     slotIndex: slot.slotIndex,
@@ -150,6 +151,23 @@ export const generateDailyBriefing = (houses: House[], cycleTimes: CycleTime[], 
                     nextNpcType: NpcType.S, // Use S as a signal for collection
                 };
             } else {
+                // Check for INDEPENDENT mode logic
+                const isIndependent = house?.productionMode === 'INDEPENDENT';
+
+                if (isIndependent) {
+                    return {
+                         houseId: slot.houseId,
+                         slotIndex: slot.slotIndex,
+                         currentPet: currentPetName,
+                         task: `Harvest ${currentNpcType} to Warehouse`,
+                         estFinishTime: finishTime,
+                         serviceBlock: slot.serviceBlock,
+                         currentNpcType,
+                         nextNpcType: currentNpcType, // It produces a pet of the same type as the NPC (e.g. E NPC -> E Pet)
+                         forceStore: true
+                    };
+                }
+
                 const nextRank = npcRankOrder[currentRankIndex + 1];
                 
                 // Logic to distinguish simple start vs upgrade loop

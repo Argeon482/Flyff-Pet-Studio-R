@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const DashboardIcon: React.FC = () => (
@@ -83,5 +84,17 @@ export const TamerIcon: React.FC = () => (
 export const HarvestIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+    </svg>
+);
+
+export const LinkedIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+    </svg>
+);
+
+export const UnlinkedIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 13.875a4.002 4.002 0 00-5.703-5.703l-1.102 1.101 m5.703 5.703l1.102 1.101a4.002 4.002 0 005.703-5.703l-4-4a4.002 4.002 0 00-5.703 5.703" />
     </svg>
 );

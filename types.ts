@@ -30,6 +30,8 @@ export interface PetSlot {
 export interface House {
   id: number;
   division: Division;
+  label: string; // Custom name for the house
+  productionMode: 'LINKED' | 'INDEPENDENT'; // Determines if slots flow to each other
   serviceBlock: string;
   perfectionAttempts: number;
   slots: {
@@ -60,6 +62,7 @@ export interface DailyBriefingTask {
   serviceBlock: string;
   currentNpcType: NpcType;
   nextNpcType: NpcType | null; // For swaps
+  forceStore?: boolean; // If true, harvest to warehouse instead of next slot
 }
 
 export interface DailyBriefingData {
