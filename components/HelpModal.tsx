@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 
 interface HelpModalProps {
@@ -16,75 +17,81 @@ const HelpContent: React.FC = () => (
       <HelpSection title="Saving & Transferring Your State">
         <p>Your progress is handled in two ways: automatic session saving and manual code backups.</p>
         <ul className="list-disc list-inside space-y-1 pl-4">
-            <li><strong>Automatic Session Saving:</strong> The app automatically saves your current state to your browser's local storage. You can close the tab or browser, and your factory will be exactly as you left it when you return on the same device.</li>
+            <li><strong>Automatic Session Saving:</strong> The app automatically saves your current state to your browser's local storage. You can close the tab or browser, and your factory will be exactly as you left it.</li>
             <li><strong>Backup & Transfer (Save/Load Codes):</strong> For long-term backups or to move your factory to another device, use the Save/Load feature (floppy disk icon in the header).
                 <ul className="list-disc list-inside space-y-1 pl-6 mt-1 text-sm">
-                    <li><strong>Generate Code:</strong> This creates a unique text code representing your entire factory. Copy this code and save it in a text file or notes app.</li>
-                    <li><strong>Load from Code:</strong> Paste a previously saved code to restore your factory to that state. <strong>Warning:</strong> This will overwrite your current session.</li>
+                    <li><strong>Generate Code:</strong> This creates a unique text code representing your entire factory. Copy this code and save it safely.</li>
+                    <li><strong>Load from Code:</strong> Paste a previously saved code to restore your factory. This system is version-proof; old codes will work even after app updates.</li>
                 </ul>
             </li>
         </ul>
       </HelpSection>
-      <HelpSection title="Dashboard">
-        <p>Your central command. It provides a real-time overview of your empire's key metrics.</p>
+      
+      <HelpSection title="Dashboard Analytics">
+        <p>Your central command provides a dual-view of your finances to help with cash flow management.</p>
         <ul className="list-disc list-inside space-y-1 pl-4">
             <li><strong>Cash Balance:</strong> Your current liquid assets. Click the number to edit it directly.</li>
-            <li><strong>Projected Weekly Profit:</strong> An estimate of your net profit based on your current factory configuration, market prices, and NPC costs.</li>
-            <li><strong>At a Glance Warehouse:</strong> A quick summary of all your inventory levels.</li>
-            <li><strong>Next Action:</strong> Tells you which Service Block has a pet finishing next and at what time.</li>
+            <li><strong>Actual Cash Flow (Next 7 Days):</strong> The real-world revenue you will generate based <em>strictly</em> on the timers currently running. Use this to plan immediate upgrades.</li>
+            <li><strong>Max Capacity (Weekly):</strong> The theoretical maximum profit your factory <em>could</em> generate if every slot was running efficiently 24/7. Use this to measure potential.</li>
             <li><strong>Critical Alerts:</strong> Warns you about low stock levels or NPCs that are about to expire.</li>
-            <li><strong>Champion's Journey:</strong> Tracks the progress of the pet in your designated "Champion Pet" house.</li>
         </ul>
       </HelpSection>
-      <HelpSection title="Daily Briefing">
-        <p>This is your primary action screen, divided into two key sections for managing your 3 daily check-ins (9 AM, 3 PM, 9 PM).</p>
+
+      <HelpSection title="Daily Briefing: The Batch System">
+        <p>The Briefing is your strategic guide. It groups individual tasks into efficient <strong>"House Batches"</strong> to minimize travel time in-game.</p>
         <h4 className="font-semibold text-lg text-gray-200 mt-4 mb-2">1. Due Now & Overdue</h4>
         <ul className="list-disc list-inside space-y-1 pl-4">
-            <li>This is an <strong>interactive checklist</strong> for all pets that have finished training.</li>
-            <li><strong>IMPORTANT:</strong> You must complete these tasks in the <strong>order they are presented.</strong></li>
-            <li>The list is intelligently sorted to ensure the most efficient workflow (e.g., clearing high-rank slots first).</li>
-            <li>Only the top-most, highest-priority task is active. All others are disabled. As you complete one, the next becomes available.</li>
-            <li>Checking a box automates the entire process: moving the pet, updating the warehouse, and auto-restocking the empty slot if materials are available.</li>
-        </ul>
-        <h4 className="font-semibold text-lg text-gray-200 mt-4 mb-2">2. Upcoming for Next Check-in</h4>
-        <ul className="list-disc list-inside space-y-1 pl-4">
-            <li>This is a <strong>read-only plan</strong> showing all pets that will finish before your next scheduled check-in.</li>
-            <li>Use this to anticipate your workload for the next session.</li>
+            <li>Tasks are grouped by <strong>Physical House</strong>. Instead of servicing one slot at a time, you service the entire house at once.</li>
+            <li><strong>The Mission Workflow:</strong> Clicking a task opens a step-by-step guide:
+                <ol className="list-decimal list-inside pl-6 mt-1 text-sm space-y-1">
+                    <li><strong>Prep:</strong> Withdraw all necessary raw materials (F-Stock) from the Warehouse.</li>
+                    <li><strong>Harvest:</strong> Go to the house and collect <em>all</em> finished pets.</li>
+                    <li><strong>Upgrade:</strong> Go to the Tamer and upgrade all pets in one batch (e.g., F&rarr;E, E&rarr;D).</li>
+                    <li><strong>Place/Finalize:</strong> Return to the house to place upgraded pets, or deposit extras into the Warehouse.</li>
+                </ol>
+            </li>
+            <li><strong>Smart Routing:</strong> The app automatically calculates where pets go based on your Slot Modes and Virtual House configurations.</li>
         </ul>
       </HelpSection>
-      <HelpSection title="Factory Floor">
-        <p>This is where you build and configure your entire production empire.</p>
-         <h4 className="font-semibold text-lg text-gray-200 mt-4 mb-2">House Management</h4>
+
+      <HelpSection title="Factory Floor: Advanced Configuration">
+        <p>Build your empire using powerful logical tools to manage complex layouts.</p>
+        
+        <h4 className="font-semibold text-lg text-gray-200 mt-4 mb-2">House Management</h4>
         <ul className="list-disc list-inside space-y-1 pl-4">
-            <li><strong>Add/Remove House:</strong> Use the buttons to expand or shrink your factory.</li>
-            <li><strong>Division:</strong> Assign each house to a strategic role (Champion, Nursery, or Factory) using the dropdown.</li>
-            <li><strong>Service Block:</strong> This is calculated <strong>automatically</strong> based on the house's division to ensure a balanced workload for your 3-shift system. You don't need to manage this.</li>
+            <li><strong>Renaming:</strong> Click any House ID (e.g., "House #1") to give it a custom label (e.g., "Nursery A").</li>
+            <li><strong>Service Blocks:</strong> Calculated automatically to ensure a balanced 3-shift workload (9 AM, 3 PM, 9 PM).</li>
         </ul>
-        <h4 className="font-semibold text-lg text-gray-200 mt-4 mb-2">NPC & Pet Slot Management</h4>
+
+        <h4 className="font-semibold text-lg text-gray-200 mt-4 mb-2">Slot Modes (The Chain System)</h4>
+        <p className="text-sm mb-2">Every NPC slot has a "Link" toggle (Chain Icon) in the top-right corner.</p>
         <ul className="list-disc list-inside space-y-1 pl-4">
-            <li><strong>NPC Type:</strong> Select an NPC type for each slot. The app enforces the "one type per house" rule by disabling options that are already in use in that house.</li>
-            <li><strong>NPC Expiration:</strong> This is tracked <strong>automatically.</strong> The 15-day countdown begins the first time you use an NPC to train a pet.</li>
-            <li><strong>Pet Timers:</strong> You have three ways to manage timers:
-                {/* FIX: Updated help text to match implemented behavior (double-click to start, "by %" button for progress) */}
-                <ul className="list-disc list-inside space-y-1 pl-6 mt-1 text-sm">
-                    <li><strong>Double-click `Start`:</strong> Starts the timer from the beginning. Click once to prime, then again within 2 seconds to confirm.</li>
-                    <li><strong>Click `by %`:</strong> Opens a popup to set the pet's current progress as a percentage. Perfect for syncing pets that were already running.</li>
-                    <li><strong>Triple-Tap a Running Timer:</strong> Instantly completes the timer. Useful for testing or correcting mistakes.</li>
+            <li><strong><span className="text-green-400">🔗 Linked Mode (Default):</span></strong> Assumes a production line within the house. A finished pet flows to the <em>next slot in the same house</em>.</li>
+            <li><strong><span className="text-purple-400">⛓️ Solo Mode:</span></strong> The slot is independent.
+                <ul className="list-disc list-inside pl-6 mt-1 text-sm">
+                    <li>If unassigned, the task will be <strong>"Harvest to Warehouse"</strong>.</li>
+                    <li>If assigned to a <strong>Virtual House</strong>, it flows to the next slot in that virtual chain.</li>
                 </ul>
             </li>
         </ul>
-      </HelpSection>
-      <HelpSection title="Warehouse & Pet Sales">
-        <p>Manage your inventory, finances, and market prices.</p>
+
+        <h4 className="font-semibold text-lg text-gray-200 mt-4 mb-2">Virtual Houses</h4>
+        <p>Use this to stitch together production lines across different physical houses.</p>
         <ul className="list-disc list-inside space-y-1 pl-4">
-            <li><strong>Warehouse:</strong> Directly edit your current and safety stock levels for all items. The inventory includes purchased raw materials (F-Pets) and Work-in-Progress (WIP) pets produced by your factory.</li>
-            <li><strong>Pet Sales & Config:</strong>
-                <ul className="list-disc list-inside space-y-1 pl-6 mt-1 text-sm">
-                    <li><strong>Market Config:</strong> Click any price to edit it. This is where you set sale prices for produced pets, the purchase price for F-Pets, and the recurring cost of your NPCs.</li>
-                    <li><strong>Inventory:</strong> Sell your finished S-Pets from the collected inventory.</li>
-                    <li><strong>Sales Ledger:</strong> A complete history of all your sales transactions is recorded here for analysis.</li>
-                </ul>
+            <li><strong>Concept:</strong> Create a logical "House" made of 3 specific Solo slots from anywhere in your factory.</li>
+            <li><strong>How to Use:</strong> 
+                1. Set 3 slots to <strong>Solo Mode</strong>.
+                2. Click <strong>"Manage Virtual Houses"</strong>.
+                3. Select the 3 slots and name your chain.
             </li>
+            <li><strong>Result:</strong> The Daily Briefing will treat these 3 slots as a single unit, guiding you to move pets from House A &rarr; House B &rarr; House C automatically.</li>
+        </ul>
+      </HelpSection>
+
+      <HelpSection title="Warehouse & Sales">
+        <ul className="list-disc list-inside space-y-1 pl-4">
+            <li><strong>Warehouse:</strong> Manages "Stock" (Purchased F-Pets) and "WIP" (Pets harvested from Independent slots waiting for a home).</li>
+            <li><strong>Pet Sales:</strong> Set your market prices here. These drive the financial projections on the Dashboard.</li>
         </ul>
       </HelpSection>
     </>
@@ -105,20 +112,24 @@ const StrategyContent: React.FC = () => (
             <ul className="list-disc list-inside space-y-1 pl-4">
                 <li><strong>The "Decent Pet":</strong> An S-Rank pet with lucky high-end stats (e.g., `1/1/2/3/7/8`). The primary profit target.</li>
                 <li><strong>The "Perfect Pet":</strong> The legendary `1/2/3/4/5/7/9` stat progression. A multi-month, multi-billion currency project.</li>
-                <li><strong>The "Perfection Journey":</strong> Rerolling a "Champion" pet's stats with "sacrifice" pets at each rank.</li>
                 <li><strong>The "House Uniqueness Constraint":</strong> You can only have <strong>one of each type of NPC per house.</strong></li>
             </ul>
         </HelpSection>
 
         <HelpSection title="Part 3: Act I - Building Your 13-House A-Rank Cash Engine">
             <p><strong>Required Starting Capital:</strong> 490 Million. Follow the 18-Day Startup Plan by reinvesting 100% of profits to expand from 2 to 13 houses.</p>
-            <p><strong>Daily Schedule (3-Shift System):</strong> Manage pet flow at <strong>9 AM, 3 PM, and 9 PM</strong> to keep all NPC slots active 24/7.</p>
             <p><strong>Final Configuration ("Industrial Pod"):</strong></p>
             <ul className="list-disc list-inside space-y-1 pl-4">
                 <li><strong>Houses 1-9 (Main Line):</strong> 9x houses, each with `D | C | B` NPCs.</li>
-                <li><strong>Houses 10-13 (Nursery Engine):</strong> H10: `F|E|D` | H11: `F|E|C` | H12: `F|E|B` | H13: `F|E|Flex`</li>
+                <li><strong>Houses 10-13 (Nursery Engine):</strong> 
+                    <br/>H10: `F|E|D` 
+                    <br/>H11: `F|E|C` 
+                    <br/>H12: `F|E|B` 
+                    <br/>H13: `F|E|Flex`
+                </li>
             </ul>
-            <p>This generates a stable net profit of <strong>~1.13 Billion per week.</strong></p>
+            <p className="mt-2 text-sm bg-gray-900 p-2 rounded border border-gray-600"><strong>Pro Tip:</strong> Use <strong>Virtual Houses</strong> to combine the 3rd slot of Houses 10, 11, and 12 into a "Virtual Factory" line to utilize those extra NPCs efficiently!</p>
+            <p className="mt-2">This setup generates a stable net profit of <strong>~1.13 Billion per week.</strong></p>
         </HelpSection>
 
         <HelpSection title="Part 4: Act II - The Compounding Expansion">
@@ -126,7 +137,7 @@ const StrategyContent: React.FC = () => (
             <ol className="list-decimal list-inside space-y-1 pl-4">
                 <li>Run your 13-house factory at maximum capacity.</li>
                 <li>When you accumulate 100m in profit, buy a new house plot.</li>
-                <li>Build in Pods of 13 houses (13 → 26 → 39 → 52 → etc.).</li>
+                <li>Build in Pods of 13 houses (13 &rarr; 26 &rarr; 39 &rarr; 52 &rarr; etc.).</li>
             </ol>
              <p>Implement the <strong>Master Rotational Schedule</strong> as you expand to keep daily workload manageable.</p>
         </HelpSection>
