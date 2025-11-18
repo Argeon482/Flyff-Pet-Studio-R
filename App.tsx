@@ -1,7 +1,9 @@
 
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot } from './types';
-import { INITIAL_HOUSES, INITIAL_WAREHOUSE_ITEMS, CYCLE_TIMES, INITIAL_PRICES, INITIAL_SALES_HISTORY, INITIAL_COLLECTED_PETS, DEFAULT_CHECKIN_TIMES } from './constants';
+import { CYCLE_TIMES, INITIAL_APP_STATE } from './constants';
+import { migrateState } from './services/stateMigration';
 import * as examples from './examples';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -156,16 +158,6 @@ const SaveLoadModal: React.FC<SaveLoadModalProps> = ({ isOpen, onClose, appState
 
 const LOCAL_STORAGE_KEY = 'flyff-pet-studio-state';
 
-const INITIAL_APP_STATE: AppState = {
-  houses: INITIAL_HOUSES,
-  warehouseItems: INITIAL_WAREHOUSE_ITEMS,
-  cashBalance: 490000000,
-  prices: INITIAL_PRICES,
-  collectedPets: INITIAL_COLLECTED_PETS,
-  salesHistory: INITIAL_SALES_HISTORY,
-  checkinTimes: DEFAULT_CHECKIN_TIMES,
-};
-
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [appState, setAppState] = useState<AppState>(() => {
@@ -173,15 +165,16 @@ const App: React.FC = () => {
       const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (savedStateJSON) {
         const loadedState = JSON.parse(savedStateJSON);
-        // Merge with initial state to ensure forward compatibility if new properties are added
-        return { ...INITIAL_APP_STATE, ...loadedState };
+        // Use the migration service to ensure forward compatibility
+        return migrateState(loadedState);
       }
     } catch (error) {
       console.error("Failed to load or parse state from localStorage:", error);
       // If parsing fails, the data is corrupt. Remove it to prevent future load failures.
       localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
-    return INITIAL_APP_STATE;
+    // Return a fresh copy of the initial state if nothing is loaded or if there's an error.
+    return JSON.parse(JSON.stringify(INITIAL_APP_STATE));
   });
 
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
@@ -231,9 +224,9 @@ const App: React.FC = () => {
   };
 
   const handleLoadState = useCallback((newState: AppState) => {
-    // Merge with initial state to ensure forward compatibility when loading from a code
-    const mergedState = { ...INITIAL_APP_STATE, ...newState };
-    setAppState(mergedState);
+    // Use the migration service to ensure forward compatibility when loading from a code
+    const migratedState = migrateState(newState);
+    setAppState(migratedState);
     alert('State loaded successfully!');
   }, []);
 

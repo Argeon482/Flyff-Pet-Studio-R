@@ -1,4 +1,4 @@
-import { House, NpcType, WarehouseItem, CycleTime, PriceConfig, CollectedPet, SaleRecord, Division } from './types';
+import { House, NpcType, WarehouseItem, CycleTime, PriceConfig, CollectedPet, SaleRecord, Division, AppState } from './types';
 
 export const CYCLE_TIMES: CycleTime[] = [
   { npcType: NpcType.F, time: 10 },
@@ -41,3 +41,15 @@ export const INITIAL_HOUSES: House[] = [];
 export const DIVISIONS: Division[] = Object.values(Division);
 
 export const DEFAULT_CHECKIN_TIMES: number[] = [9, 15, 21];
+
+// This is the source of truth for the application's default data structure.
+// The migration service uses this to ensure forward compatibility.
+export const INITIAL_APP_STATE: AppState = {
+  houses: INITIAL_HOUSES,
+  warehouseItems: INITIAL_WAREHOUSE_ITEMS,
+  cashBalance: 490000000,
+  prices: INITIAL_PRICES,
+  collectedPets: INITIAL_COLLECTED_PETS,
+  salesHistory: INITIAL_SALES_HISTORY,
+  checkinTimes: DEFAULT_CHECKIN_TIMES,
+};
