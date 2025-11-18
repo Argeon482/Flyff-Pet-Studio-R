@@ -1,5 +1,7 @@
-import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division } from "../types";
 
+import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division, DashboardAnalytics } from "../types";
+
+// Calculates the THEORETICAL MAXIMUM throughput of the current layout
 const calculateProjectedProfit = (
     houses: House[],
     cycleTimes: CycleTime[],
@@ -8,7 +10,7 @@ const calculateProjectedProfit = (
 ): ProjectedProfit => {
     const activeSlots = houses.flatMap(h => h.slots).filter(s => s.npc.type && s.npc.duration);
     if (activeSlots.length === 0 || checkinTimes.length === 0) {
-        return { grossRevenue: 0, npcExpenses: 0, perfectionExpenses: 0, netProfit: 0, sPetsPerWeek: 0 };
+        return { grossRevenue: 0, npcExpenses: 0, perfectionExpenses: 0, netProfit: 0, sPetsCount: 0 };
     }
 
     const fullCycleTimeHours = cycleTimes.reduce((sum, ct) => sum + ct.time, 0);
@@ -24,9 +26,9 @@ const calculateProjectedProfit = (
 
     // How many full pipelines can one slot complete in a week?
     const pipelinesPerSlotPerWeek = (7 * 24) / totalEffectiveCycleTime;
-    const sPetsPerWeek = activeSlots.length * pipelinesPerSlotPerWeek;
+    const sPetsCount = activeSlots.length * pipelinesPerSlotPerWeek;
     
-    const grossRevenue = sPetsPerWeek * finalPetPrice;
+    const grossRevenue = sPetsCount * finalPetPrice;
 
     // Cost of NPCs for all active slots, considering their individual durations
     let npcExpenses = 0;
@@ -44,7 +46,53 @@ const calculateProjectedProfit = (
 
     const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
 
-    return { grossRevenue, npcExpenses, perfectionExpenses, netProfit, sPetsPerWeek };
+    return { grossRevenue, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
+};
+
+// Calculates the ACTUAL expected cash flow for the next 7 days based on current timers
+const calculateActualWeeklyFinances = (
+    houses: House[],
+    prices: PriceConfig,
+    currentTime?: number
+): ProjectedProfit => {
+    const now = currentTime || Date.now();
+    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+    const endOfWeek = now + oneWeekMs;
+
+    let grossRevenue = 0;
+    let npcExpenses = 0;
+    let sPetsCount = 0;
+
+    houses.forEach(house => {
+        house.slots.forEach(slot => {
+            // 1. Calculate Revenue: Only 'A' NPCs produce an 'S' pet for sale
+            if (slot.npc.type === NpcType.A && slot.pet.finishTime) {
+                if (slot.pet.finishTime > now && slot.pet.finishTime <= endOfWeek) {
+                    grossRevenue += (prices.petPrices[NpcType.S] || 0);
+                    sPetsCount++;
+                }
+            }
+
+            // 2. Calculate Expenses: NPC Expirations occurring in the next 7 days
+            if (slot.npc.expiration) {
+                const expirationTime = new Date(slot.npc.expiration).getTime();
+                if (expirationTime > now && expirationTime <= endOfWeek) {
+                    // Assume we re-hire for the same duration
+                    const cost = slot.npc.duration === 7 ? prices.npcCost7Day : prices.npcCost15Day;
+                    npcExpenses += cost;
+                }
+            }
+        });
+    });
+
+    // Note: Perfection expenses are harder to predict "actually" without knowing user intent,
+    // so we leave them as 0 for the "Cash Flow" view, or we could check the Champion house.
+    // For now, let's assume 0 unless we track specific "Sacrifice" tasks.
+    const perfectionExpenses = 0; 
+    
+    const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
+
+    return { grossRevenue, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
 };
 
 
@@ -144,7 +192,7 @@ export const generateDashboardAnalytics = (
     cycleTimes: CycleTime[],
     prices: PriceConfig,
     checkinTimes: number[]
-): { alerts: string[], nextAction: string, projectedProfit: ProjectedProfit } => {
+): DashboardAnalytics => {
     const alerts: string[] = [];
     const now = new Date();
     const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -190,9 +238,10 @@ export const generateDashboardAnalytics = (
         nextAction = `UP NEXT: ${nextServiceBlock} at ${timeString}`;
     }
 
-    const projectedProfit = calculateProjectedProfit(houses, cycleTimes, prices, checkinTimes);
+    const theoreticalMaxWeekly = calculateProjectedProfit(houses, cycleTimes, prices, checkinTimes);
+    const actualNext7Days = calculateActualWeeklyFinances(houses, prices, now.getTime());
 
-    return { alerts, nextAction, projectedProfit };
+    return { alerts, nextAction, theoreticalMaxWeekly, actualNext7Days };
 };
 
 // Export for use in the comparison modal

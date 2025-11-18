@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { House, WarehouseItem, CycleTime, PriceConfig, Division, NpcType, ProjectedProfit, CollectedPet } from '../types';
+import { House, WarehouseItem, CycleTime, PriceConfig, Division, NpcType, ProjectedProfit, CollectedPet, DashboardAnalytics } from '../types';
 import { generateDashboardAnalytics } from '../services/geminiService';
 import { AlertIcon, ChampionIcon, ClockIcon, WarehouseIcon } from './icons/Icons';
 
@@ -63,31 +64,37 @@ const EditableCashBalance: React.FC<{ balance: number; onSave: (newBalance: numb
     );
 };
 
-const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit }> = ({ profitData }) => {
-    const { grossRevenue, npcExpenses, perfectionExpenses, netProfit } = profitData;
+const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit, title: string, subTitle: string }> = ({ profitData, title, subTitle }) => {
+    const { grossRevenue, npcExpenses, perfectionExpenses, netProfit, sPetsCount } = profitData;
     
     const formatCurrency = (value: number) => `$${Math.round(value).toLocaleString()}`;
 
     return (
-        <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-                <span className="text-gray-400">Gross Potential Revenue</span>
-                <span className="font-semibold text-green-400">{formatCurrency(grossRevenue)}</span>
-            </div>
-            <div className="flex justify-between">
-                <span className="text-gray-400">Operational Expenses (NPCs)</span>
-                <span className="font-semibold text-yellow-400">-{formatCurrency(npcExpenses)}</span>
-            </div>
-            {perfectionExpenses > 0 && (
-                 <div className="flex justify-between">
-                    <span className="text-gray-400">Perfection Expenses (S-Pets)</span>
-                    <span className="font-semibold text-red-400">-{formatCurrency(perfectionExpenses)}</span>
+        <div className="bg-gray-900/40 p-4 rounded-lg border border-gray-700 flex flex-col h-full">
+            <h4 className="text-cyan-400 font-bold text-lg mb-0.5">{title}</h4>
+            <p className="text-gray-500 text-xs mb-3">{subTitle}</p>
+            
+            <div className="space-y-2 text-sm flex-grow">
+                <div className="flex justify-between">
+                    <span className="text-gray-400">Revenue ({Math.round(sPetsCount)} S-Pets)</span>
+                    <span className="font-semibold text-green-400">{formatCurrency(grossRevenue)}</span>
                 </div>
-            )}
+                <div className="flex justify-between">
+                    <span className="text-gray-400">NPC Renewals</span>
+                    <span className="font-semibold text-yellow-400">-{formatCurrency(npcExpenses)}</span>
+                </div>
+                 {perfectionExpenses > 0 && (
+                     <div className="flex justify-between">
+                        <span className="text-gray-400">Perfection Exp.</span>
+                        <span className="font-semibold text-red-400">-{formatCurrency(perfectionExpenses)}</span>
+                    </div>
+                )}
+            </div>
+
             <div className="border-t border-gray-700 my-2"></div>
-             <div className="flex justify-between text-base">
-                <span className="font-bold text-gray-200">Est. Net Profit</span>
-                <span className={`font-bold ${netProfit >= 0 ? 'text-blue-400' : 'text-red-500'}`}>{formatCurrency(netProfit)}</span>
+             <div className="flex justify-between text-base items-center">
+                <span className="font-bold text-gray-300">Net Profit</span>
+                <span className={`font-bold text-lg ${netProfit >= 0 ? 'text-blue-400' : 'text-red-500'}`}>{formatCurrency(netProfit)}</span>
             </div>
         </div>
     );
@@ -98,15 +105,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     houses, warehouseItems, cashBalance, setCashBalance, 
     cycleTimes, prices, checkinTimes, collectedPets, onPerfectionAttempt 
 }) => {
-    const [analytics, setAnalytics] = useState<{ 
-        alerts: string[], 
-        nextAction: string, 
-        projectedProfit: ProjectedProfit 
-    }>({ 
-        alerts: [], 
-        nextAction: '', 
-        projectedProfit: { grossRevenue: 0, npcExpenses: 0, perfectionExpenses: 0, netProfit: 0, sPetsPerWeek: 0 } 
-    });
+    const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
 
     useEffect(() => {
         const data = generateDashboardAnalytics(houses, warehouseItems, cycleTimes, prices, checkinTimes);
@@ -116,8 +115,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     const champion = houses.find(h => h.division === Division.CHAMPION); 
     const availableSPets = collectedPets.find(p => p.petType === NpcType.S)?.quantity || 0;
 
-    const renderPanel = (title: string, icon: React.ReactNode, children: React.ReactNode) => (
-        <div className="bg-gray-800 rounded-lg shadow-lg p-6">
+    const renderPanel = (title: string, icon: React.ReactNode, children: React.ReactNode, className: string = "") => (
+        <div className={`bg-gray-800 rounded-lg shadow-lg p-6 ${className}`}>
             <div className="flex items-center mb-4">
                 {icon}
                 <h3 className="ml-3 text-lg font-semibold text-cyan-400">{title}</h3>
@@ -128,20 +127,36 @@ const Dashboard: React.FC<DashboardProps> = ({
     
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {/* Main Stats */}
-            <div className="lg:col-span-1 xl:col-span-1 space-y-6">
-                <div className="bg-gray-800 rounded-lg shadow-lg p-6 text-center">
-                    <p className="text-gray-400 text-sm font-medium">Cash Balance</p>
+            {/* Main Stats & Projections */}
+            <div className="lg:col-span-3 xl:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-gray-800 rounded-lg shadow-lg p-6 text-center flex flex-col justify-center">
+                    <p className="text-gray-400 text-sm font-medium uppercase tracking-wide">Current Cash Balance</p>
                     <EditableCashBalance balance={cashBalance} onSave={setCashBalance} />
                 </div>
-                 <div className="bg-gray-800 rounded-lg shadow-lg p-6">
-                    <p className="text-gray-400 text-sm font-medium mb-2 text-center">Projected Weekly Profit</p>
-                    <ProfitBreakdown profitData={analytics.projectedProfit} />
+                
+                <div className="md:col-span-2 bg-gray-800 rounded-lg shadow-lg p-6">
+                     <div className="flex items-center mb-4">
+                        <h3 className="text-lg font-semibold text-white">Financial Projections</h3>
+                    </div>
+                    {analytics && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <ProfitBreakdown 
+                                title="Actual (Next 7 Days)" 
+                                subTitle="Based on current active timers & expirations."
+                                profitData={analytics.actualNext7Days} 
+                            />
+                            <ProfitBreakdown 
+                                title="Max Capacity (Weekly)" 
+                                subTitle="Theoretical max if fully utilized 24/7."
+                                profitData={analytics.theoreticalMaxWeekly} 
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 
             {/* Panels */}
-            <div className="lg:col-span-2 xl:col-span-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="lg:col-span-3 xl:col-span-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                  {renderPanel("At a Glance Warehouse", <WarehouseIcon />, 
                     <ul className="space-y-2 text-sm">
                         {warehouseItems.map(item => (
@@ -154,13 +169,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                 )}
                 
                 {renderPanel("Next Action", <ClockIcon />,
-                    <p className="text-cyan-300 font-semibold">{analytics.nextAction}</p>
+                    <p className="text-cyan-300 font-semibold">{analytics?.nextAction || '...'}</p>
                 )}
 
                 {renderPanel("Critical Alerts", <AlertIcon />, 
-                    analytics.alerts.length > 0 ? (
+                    (analytics?.alerts.length || 0) > 0 ? (
                          <ul className="space-y-2 text-sm">
-                            {analytics.alerts.map((alert, i) => <li key={i} className="text-yellow-400">{alert}</li>)}
+                            {analytics?.alerts.map((alert, i) => <li key={i} className="text-yellow-400">{alert}</li>)}
                         </ul>
                     ) : <p className="text-gray-400">No critical alerts.</p>
                 )}

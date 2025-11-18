@@ -1,3 +1,4 @@
+
 export enum NpcType {
   F = 'F',
   E = 'E',
@@ -100,7 +101,14 @@ export interface ProjectedProfit {
     npcExpenses: number;
     perfectionExpenses: number;
     netProfit: number;
-    sPetsPerWeek: number;
+    sPetsCount: number; // Renamed from sPetsPerWeek to be generic for timeframes
+}
+
+export interface DashboardAnalytics {
+    alerts: string[];
+    nextAction: string;
+    actualNext7Days: ProjectedProfit;
+    theoreticalMaxWeekly: ProjectedProfit;
 }
 
 export enum HouseTemplate {

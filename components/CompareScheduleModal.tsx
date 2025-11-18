@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { House, CycleTime, PriceConfig, ProjectedProfit } from '../types';
 import { calculateProjectedProfit } from '../services/geminiService';
@@ -11,7 +12,7 @@ interface CompareScheduleModalProps {
     prices: PriceConfig;
 }
 
-const BreakdownRow: React.FC<{ label: string, data: ProjectedProfit, idealData: ProjectedProfit, field: keyof Omit<ProjectedProfit, 'sPetsPerWeek' | 'netProfit'>, isGood?: boolean }> = 
+const BreakdownRow: React.FC<{ label: string, data: ProjectedProfit, idealData: ProjectedProfit, field: keyof Omit<ProjectedProfit, 'sPetsCount' | 'netProfit'>, isGood?: boolean }> = 
 ({ label, data, idealData, field, isGood = true }) => {
     const userValue = data[field] as number;
     const idealValue = idealData[field] as number;
@@ -73,7 +74,7 @@ const CompareScheduleModal: React.FC<CompareScheduleModalProps> = ({ onClose, us
                         <div className="font-bold text-gray-300 text-xl border-b border-gray-600 pb-2">Difference</div>
 
                         {/* Data Rows */}
-                        {renderStat("S-Pets / Week", userAnalytics.sPetsPerWeek, idealAnalytics.sPetsPerWeek)}
+                        {renderStat("S-Pets / Week", userAnalytics.sPetsCount, idealAnalytics.sPetsCount)}
 
                         {/* Profit Breakdown Section */}
                         <div className="col-span-4 border-t border-gray-700 my-3"></div>
