@@ -111,6 +111,23 @@ export enum HouseTemplate {
     EMPTY = 'EMPTY',
 }
 
+// Stores the details of a completed task to allow for history display and undoing
+export interface CompletedTaskLog {
+    id: string;
+    task: DailyBriefingTask;
+    timestamp: number;
+    changes: {
+        sourceHouseId: number;
+        sourceSlotIndex: number;
+        sourcePetType: NpcType; // The pet that finished
+        targetHouseId?: number;
+        targetSlotIndex?: number;
+        targetPetType?: NpcType; // The pet created in the target
+        warehouseWipId?: string; // If moved to WIP
+        warehouseConsumedId?: string; // If stock was consumed
+    }
+}
+
 // === Data State Types ===
 
 export interface AppState {
@@ -121,4 +138,5 @@ export interface AppState {
     collectedPets: CollectedPet[];
     salesHistory: SaleRecord[];
     checkinTimes: number[];
+    completedTaskLog: CompletedTaskLog[]; // New history log
 }

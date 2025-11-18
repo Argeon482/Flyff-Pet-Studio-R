@@ -1,7 +1,5 @@
-
-
 import React, { useState, useCallback, useEffect } from 'react';
-import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot } from './types';
+import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot, CompletedTaskLog } from './types';
 import { CYCLE_TIMES, INITIAL_APP_STATE } from './constants';
 import { migrateState } from './services/stateMigration';
 import * as examples from './examples';
@@ -14,8 +12,9 @@ import PetSales from './components/PetSales';
 import HelpModal from './components/HelpModal';
 import ScheduleModal from './components/ScheduleModal';
 import ExampleModeControls from './components/ExampleModeControls';
+import SaveLoadModal from './components/SaveLoadModal'; // Re-imported after reverting inline change
 
-// UTILITY FUNCTION (Previously in services/utils.ts)
+// UTILITY FUNCTION (Moved back to App.tsx after revert)
 const calculateAndAssignServiceBlocks = (houses: House[]): House[] => {
     const groupedByDivision: Record<string, House[]> = {};
     for (const house of houses) {
@@ -43,116 +42,6 @@ const calculateAndAssignServiceBlocks = (houses: House[]): House[] => {
     });
 
     return updatedHouses.sort((a, b) => a.id - b.id);
-};
-
-
-// MODAL COMPONENT (Previously in components/SaveLoadModal.tsx)
-interface SaveLoadModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    appState: AppState;
-    onLoadState: (state: AppState) => void;
-}
-
-const SaveLoadModal: React.FC<SaveLoadModalProps> = ({ isOpen, onClose, appState, onLoadState }) => {
-    const [generatedCode, setGeneratedCode] = useState('');
-    const [codeToLoad, setCodeToLoad] = useState('');
-    const [copyStatus, setCopyStatus] = useState('Copy Code');
-    const [error, setError] = useState('');
-
-    const handleGenerateCode = useCallback(() => {
-        try {
-            const jsonState = JSON.stringify(appState);
-            const code = btoa(jsonState);
-            setGeneratedCode(code);
-            navigator.clipboard.writeText(code).then(() => {
-                setCopyStatus('Copied!');
-                setTimeout(() => setCopyStatus('Copy Code'), 2000);
-            }).catch(() => {
-                setCopyStatus('Failed to copy');
-            });
-        } catch (e) {
-            console.error("Failed to generate code:", e);
-            setGeneratedCode('Error generating code.');
-        }
-    }, [appState]);
-
-    const handleLoadCode = () => {
-        if (!codeToLoad.trim()) {
-            setError('Please paste a code to load.');
-            return;
-        }
-        try {
-            const decodedJson = atob(codeToLoad.trim());
-            const newState = JSON.parse(decodedJson);
-            if (newState && typeof newState === 'object' && 'houses' in newState && 'warehouseItems' in newState) {
-                onLoadState(newState);
-                onClose();
-            } else {
-                throw new Error('Invalid state structure.');
-            }
-        } catch (e) {
-            console.error("Failed to load state from code:", e);
-            setError('Invalid or corrupted code. Please check and try again.');
-        }
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4" onClick={onClose}>
-            <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
-                <header className="flex justify-between items-center p-4 border-b border-gray-700">
-                    <h2 className="text-2xl font-bold text-cyan-400">Save & Load State</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
-                </header>
-                <main className="p-6 max-h-[60vh] overflow-y-auto space-y-8">
-                    <div>
-                        <h3 className="text-xl font-semibold text-gray-200 mb-3">Save Current State</h3>
-                        <p className="text-sm text-gray-400 mb-4">Generate a unique code that represents your entire factory setup. Copy this code and save it somewhere safe to restore your progress later.</p>
-                        <button onClick={handleGenerateCode} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition-colors">
-                            Generate Code
-                        </button>
-                        {generatedCode && (
-                            <div className="mt-4">
-                                <textarea
-                                    readOnly
-                                    value={generatedCode}
-                                    className="w-full h-24 bg-gray-900 text-gray-300 font-mono text-xs rounded-md p-2 border border-gray-600"
-                                    onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-                                />
-                                <button onClick={() => navigator.clipboard.writeText(generatedCode).then(() => { setCopyStatus('Copied!'); setTimeout(() => setCopyStatus('Copy Code'), 2000); })} className="mt-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-1 px-3 rounded-md text-sm">
-                                    {copyStatus}
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <div>
-                        <h3 className="text-xl font-semibold text-gray-200 mb-3">Load State from Code</h3>
-                        <p className="text-sm text-gray-400 mb-4">Paste your previously generated code here to restore your factory to that exact state.</p>
-                        <textarea
-                            value={codeToLoad}
-                            onChange={(e) => {
-                                setCodeToLoad(e.target.value);
-                                setError('');
-                            }}
-                            placeholder="Paste your save code here..."
-                            className="w-full h-24 bg-gray-700 text-white font-mono text-xs rounded-md p-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                        />
-                         {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
-                    </div>
-                </main>
-                <footer className="p-4 bg-gray-900/50 flex justify-end gap-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded bg-gray-600 hover:bg-gray-500 text-white font-semibold">
-                        Cancel
-                    </button>
-                    <button onClick={handleLoadCode} className="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-bold">
-                        Load State
-                    </button>
-                </footer>
-            </div>
-        </div>
-    );
 };
 
 
@@ -204,6 +93,7 @@ const App: React.FC = () => {
           salesHistory: exampleData.salesHistory,
           prices: appState.prices, 
           checkinTimes: appState.checkinTimes,
+          completedTaskLog: [], // Clear log for examples
       });
   };
 
@@ -235,6 +125,13 @@ const App: React.FC = () => {
         const newHouses = typeof updater === 'function' ? updater(prev.houses) : updater;
         return { ...prev, houses: newHouses };
     });
+  }, []);
+  
+  const setCompletedTaskLog = useCallback((updater: React.SetStateAction<CompletedTaskLog[]>) => {
+      setAppState(prev => {
+          const newLog = typeof updater === 'function' ? updater(prev.completedTaskLog) : updater;
+          return { ...prev, completedTaskLog: newLog };
+      });
   }, []);
 
   const updateHouse = useCallback((updatedHouse: House) => {
@@ -434,7 +331,7 @@ const App: React.FC = () => {
   }, [simulatedTime, appState.checkinTimes]);
 
   const renderView = () => {
-    const { houses, warehouseItems, cashBalance, prices, collectedPets, salesHistory, checkinTimes } = appState;
+    const { houses, warehouseItems, cashBalance, prices, collectedPets, salesHistory, checkinTimes, completedTaskLog } = appState;
     switch (currentView) {
       case View.DASHBOARD:
         return <Dashboard 
@@ -447,6 +344,7 @@ const App: React.FC = () => {
             houses={houses} cycleTimes={CYCLE_TIMES} warehouseItems={warehouseItems}
             onUpdateCollectedPets={updateCollectedPets} setHouses={setHouses}
             setWarehouseItems={setWarehouseItems} checkinTimes={checkinTimes} simulatedTime={simulatedTime}
+            completedTaskLog={completedTaskLog} setCompletedTaskLog={setCompletedTaskLog}
         />;
       case View.FACTORY_FLOOR:
         return <FactoryFloor

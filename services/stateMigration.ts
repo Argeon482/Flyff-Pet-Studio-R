@@ -48,6 +48,11 @@ export const migrateState = (loadedState: Partial<AppState>): AppState => {
     // Deep merge the loaded state onto the default state.
     // This will add any missing properties from the default state to the loaded state.
     const migrated = deepMerge(defaultState, loadedState);
+    
+    // Ensure completedTaskLog exists (specifically for this migration step)
+    if (!migrated.completedTaskLog) {
+        migrated.completedTaskLog = [];
+    }
 
     // Ensure it conforms to the AppState type for type safety
     return migrated as AppState;
