@@ -95,7 +95,7 @@ export const generateDailyBriefing = (houses: House[], cycleTimes: CycleTime[], 
                     houseId: slot.houseId,
                     slotIndex: slot.slotIndex,
                     currentPet: currentPetName,
-                    task: `Ready for collection (${nextPetRank}-Pet)`,
+                    task: `Claim Sacri S for Sale`, // Specific task name for S-Rank
                     estFinishTime: finishTime,
                     serviceBlock: slot.serviceBlock,
                     currentNpcType,
@@ -103,11 +103,18 @@ export const generateDailyBriefing = (houses: House[], cycleTimes: CycleTime[], 
                 };
             } else {
                 const nextRank = npcRankOrder[currentRankIndex + 1];
+                
+                // Logic to distinguish simple start vs upgrade loop
+                let taskName = `Harvest ${currentNpcType} & Start ${nextRank}`;
+                if (currentNpcType === NpcType.F) {
+                    taskName = `Harvest F & Start E (Use Stock)`;
+                }
+
                 return {
                     houseId: slot.houseId,
                     slotIndex: slot.slotIndex,
                     currentPet: currentPetName,
-                    task: `Swap for ${nextRank}-Pet`,
+                    task: taskName,
                     estFinishTime: finishTime,
                     serviceBlock: slot.serviceBlock,
                     currentNpcType,

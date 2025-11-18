@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { House, DailyBriefingTask, CycleTime, WarehouseItem, NpcType, CompletedTaskLog } from '../types';
 import { generateDailyBriefing } from '../services/geminiService';
 import ConfirmationModal from './ConfirmationModal';
+import { TamerIcon, HarvestIcon, WarehouseIcon, ChampionIcon } from './icons/Icons';
 
 interface DailyBriefingProps {
   houses: House[];
@@ -16,6 +17,150 @@ interface DailyBriefingProps {
   setCompletedTaskLog: React.Dispatch<React.SetStateAction<CompletedTaskLog[]>>;
 }
 
+const PetBadge: React.FC<{ type: NpcType }> = ({ type }) => {
+    const colors: Record<string, string> = {
+        [NpcType.F]: 'bg-gray-600 text-white',
+        [NpcType.E]: 'bg-green-700 text-white',
+        [NpcType.D]: 'bg-blue-700 text-white',
+        [NpcType.C]: 'bg-purple-700 text-white',
+        [NpcType.B]: 'bg-red-700 text-white',
+        [NpcType.A]: 'bg-yellow-700 text-white',
+        [NpcType.S]: 'bg-yellow-400 text-black font-bold border border-yellow-600',
+    };
+    return (
+        <span className={`px-2 py-0.5 rounded text-xs font-bold inline-block ${colors[type] || 'bg-gray-600'}`}>
+            {type}
+        </span>
+    );
+};
+
+const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
+    const { currentNpcType, nextNpcType } = task;
+    
+    if (nextNpcType === NpcType.S) {
+        return (
+            <div className="flex items-center gap-2 text-yellow-400">
+                <ChampionIcon />
+                <span className="font-bold text-sm">COLLECTION READY</span>
+            </div>
+        );
+    }
+
+    const isStartNewCycle = currentNpcType === NpcType.F;
+    const stockItem = warehouseItems.find(i => i.id === 'f-pet-stock');
+    const stockCount = stockItem ? stockItem.currentStock : 0;
+
+    return (
+        <div className="flex items-center gap-1.5 text-xs md:text-sm">
+            {isStartNewCycle ? (
+                <>
+                    <div className="flex flex-col items-center text-gray-400" title="Take from Warehouse">
+                        <WarehouseIcon />
+                        <span className={`${stockCount > 0 ? 'text-gray-400' : 'text-red-500 font-bold'}`}>
+                            {stockCount}x
+                        </span>
+                    </div>
+                    <span className="text-gray-500">→</span>
+                    <div className="flex flex-col items-center">
+                        <div className="bg-gray-700 p-1 rounded text-cyan-400"><HarvestIcon /></div>
+                        <span>Start</span>
+                    </div>
+                </>
+            ) : (
+                <>
+                   <div className="flex flex-col items-center text-gray-400">
+                        <div className="bg-gray-700 p-1 rounded"><HarvestIcon /></div>
+                        <span>Harvest</span>
+                    </div>
+                    <span className="text-gray-500">→</span>
+                    <div className="flex flex-col items-center text-purple-400">
+                        <TamerIcon />
+                        <span>Upgrade</span>
+                    </div>
+                    <span className="text-gray-500">→</span>
+                    <div className="flex flex-col items-center text-cyan-400">
+                        <div className="border border-cyan-500 px-1 rounded">Slot</div>
+                        <span>Start</span>
+                    </div>
+                </>
+            )}
+            <div className="ml-1 bg-gray-900 px-2 py-1 rounded border border-gray-700 flex items-center gap-1">
+                <PetBadge type={nextNpcType!} />
+                <span className="text-gray-300 font-semibold">-Pet</span>
+            </div>
+        </div>
+    );
+};
+
+const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
+    const { currentNpcType, nextNpcType, houseId, slotIndex } = task;
+    const isStartNewCycle = currentNpcType === NpcType.F;
+    const isSRank = nextNpcType === NpcType.S;
+
+    if (isSRank) {
+         return (
+            <div className="space-y-4">
+                <div className="bg-yellow-900/30 p-3 rounded border border-yellow-700/50">
+                    <h4 className="font-bold text-yellow-400 flex items-center gap-2">
+                        <ChampionIcon /> MISSION: COLLECTION
+                    </h4>
+                </div>
+                 <ol className="list-decimal list-inside space-y-3 text-sm text-gray-200">
+                    <li className="pl-2">
+                        Go to <span className="text-cyan-300 font-bold">House #{houseId}</span>.
+                    </li>
+                    <li className="pl-2">
+                        Claim the finished <PetBadge type={currentNpcType} /> pet (Slot {slotIndex + 1}).
+                    </li>
+                    <li className="pl-2">
+                        Go to Tamer NPC. Complete quest to receive <PetBadge type={NpcType.S} /> pet.
+                    </li>
+                    <li className="pl-2">
+                        <strong>Verify:</strong> You now have the S-Pet in your inventory/warehouse.
+                    </li>
+                </ol>
+            </div>
+         )
+    }
+
+    return (
+        <div className="space-y-4">
+             <div className="bg-cyan-900/30 p-3 rounded border border-cyan-700/50">
+                <h4 className="font-bold text-cyan-400 flex items-center gap-2">
+                    {isStartNewCycle ? <WarehouseIcon /> : <TamerIcon />} 
+                    MISSION: {isStartNewCycle ? 'NEW CYCLE START' : 'UPGRADE & RESTART'}
+                </h4>
+            </div>
+            <ol className="list-decimal list-inside space-y-3 text-sm text-gray-200">
+                <li className="pl-2">
+                    Go to <span className="text-cyan-300 font-bold">House #{houseId}</span>.
+                </li>
+                <li className="pl-2">
+                    Harvest the finished <PetBadge type={currentNpcType} /> pet (Slot {slotIndex + 1}).
+                </li>
+                {isStartNewCycle ? (
+                    <li className="pl-2">
+                        Open Warehouse. Retrieve <span className="font-bold text-white">1x F-Pet Stock</span>.
+                    </li>
+                ) : (
+                    <li className="pl-2">
+                        Go to Tamer NPC. Upgrade <PetBadge type={currentNpcType} /> to <PetBadge type={nextNpcType!} />.
+                    </li>
+                )}
+                <li className="pl-2">
+                    Return to House #{houseId}.
+                </li>
+                <li className="pl-2">
+                    Place the <PetBadge type={nextNpcType!} /> pet into Slot {slotIndex + 1}.
+                </li>
+                 <li className="pl-2">
+                    Confirm the timer has started.
+                </li>
+            </ol>
+        </div>
+    );
+}
+
 const TaskTable: React.FC<{
     tasks: DailyBriefingTask[];
     title: string;
@@ -25,7 +170,8 @@ const TaskTable: React.FC<{
     activeTaskKey?: string | null;
     isHistoryMode?: boolean;
     onUndo?: (task: DailyBriefingTask) => void;
-}> = ({ tasks, title, isInteractive, onTaskComplete, completedTaskIds, activeTaskKey, isHistoryMode, onUndo }) => {
+    warehouseItems?: WarehouseItem[];
+}> = ({ tasks, title, isInteractive, onTaskComplete, completedTaskIds, activeTaskKey, isHistoryMode, onUndo, warehouseItems = [] }) => {
     
     if (tasks.length === 0) {
         return (
@@ -52,10 +198,9 @@ const TaskTable: React.FC<{
                             <thead className="bg-gray-700/50">
                                 <tr>
                                     {isInteractive && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>}
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">House #</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current Pet</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Task</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Finished At</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">House</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Task Flow</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-gray-800 divide-y divide-gray-700">
@@ -70,7 +215,7 @@ const TaskTable: React.FC<{
                                         ${isCompleted ? 'bg-gray-700 opacity-50' : 
                                           isHistoryMode ? 'bg-gray-800' :
                                           isPending ? 'opacity-60' : 
-                                          isActive ? 'bg-cyan-900/50' : 'hover:bg-gray-700/50'}`}>
+                                          isActive ? 'bg-cyan-900/40' : 'hover:bg-gray-700/50'}`}>
                                         {isInteractive && (
                                             <td className="px-6 py-4">
                                                 {isHistoryMode ? (
@@ -84,19 +229,23 @@ const TaskTable: React.FC<{
                                                 ) : (
                                                     <input
                                                         type="checkbox"
-                                                        className={`h-5 w-5 rounded bg-gray-900 border-gray-600 text-cyan-600 focus:ring-cyan-500 ${isPending ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                                                        className={`h-6 w-6 rounded bg-gray-900 border-gray-600 text-cyan-600 focus:ring-cyan-500 ${isPending ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                                                         checked={isCompleted}
                                                         disabled={isCompleted || isPending}
                                                         onChange={() => onTaskComplete?.(task)}
-                                                        title={isPending ? "Complete higher-priority tasks first" : "Click to complete task"}
+                                                        title={isPending ? "Complete higher-priority tasks first" : "Click to view mission checklist"}
                                                     />
                                                 )}
                                             </td>
                                         )}
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-200">{task.houseId}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{task.currentPet}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-cyan-400 font-semibold">{task.task}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{task.estFinishTime}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-200">#{task.houseId}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <PetBadge type={task.currentNpcType} />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <TaskFlowVisual task={task} warehouseItems={warehouseItems} />
+                                            <div className="text-xs text-gray-500 mt-1">Est: {task.estFinishTime}</div>
+                                        </td>
                                     </tr>
                                 );
                             })}
@@ -163,7 +312,6 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
         const recentLogs = completedTaskLog.filter(log => log.timestamp > cutoffTime);
 
         // Pruning Logic: If we have logs older than cutoff, permanently delete them from state.
-        // This prevents the 'completedTaskLog' array from growing indefinitely and bloating the save code.
         if (recentLogs.length < completedTaskLog.length) {
             setCompletedTaskLog(recentLogs);
         }
@@ -417,6 +565,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
           isInteractive={true}
           onTaskComplete={initiateTaskCompletion}
           activeTaskKey={activeTaskKey}
+          warehouseItems={warehouseItems}
       />
       
       {recentHistoryTasks.length > 0 && (
@@ -426,6 +575,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
               isInteractive={true}
               isHistoryMode={true}
               onUndo={initiateUndo}
+              warehouseItems={warehouseItems}
           />
       )}
 
@@ -433,21 +583,17 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
           title={`Upcoming for Next Check-in (${nextCheckin ? nextCheckin.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '...'})`}
           tasks={upcomingTasks}
           isInteractive={false}
+          warehouseItems={warehouseItems}
       />
 
       <ConfirmationModal
         isOpen={!!confirmTask}
         onClose={() => setConfirmTask(null)}
         onConfirm={executeTaskComplete}
-        title="Confirm Task Completion"
+        title="Mission Checklist"
       >
          {confirmTask && (
-             <div className="space-y-2">
-                 <p><strong>Action:</strong> {confirmTask.task}</p>
-                 <p className="text-sm text-gray-400">
-                     This will move the pet, update warehouse inventory, and attempt to auto-restock the empty slot.
-                 </p>
-             </div>
+             <StepByStepGuide task={confirmTask} warehouseItems={warehouseItems} />
          )}
       </ConfirmationModal>
 
