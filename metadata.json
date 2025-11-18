@@ -1,0 +1,5 @@
+{
+  "name": "Flyff Pet Studio",
+  "description": "A comprehensive, semi-automated project management application to manage a large-scale, multi-stage, time-based production process in a game. It tracks the status of 71 distinct 'Houses,' manages a virtual 'Warehouse' inventory, and generates a dynamic, daily task list.",
+  "requestFramePermissions": []
+}
