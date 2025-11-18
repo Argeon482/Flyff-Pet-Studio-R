@@ -36,195 +36,115 @@ const PetBadge: React.FC<{ type: NpcType }> = ({ type }) => {
     );
 };
 
-const TaskFlowVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
-    const { currentNpcType, nextNpcType, forceStore, targetHouseId, houseId, virtualHouseName } = task;
-    
-    if (nextNpcType === NpcType.S) {
-        return (
-            <div className="flex items-center gap-2 text-yellow-400">
-                <ChampionIcon />
-                <span className="font-bold text-sm">COLLECTION READY</span>
-            </div>
-        );
-    }
+const BatchTaskVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
+    // Count types
+    const counts: Partial<Record<NpcType, number>> = {};
+    task.subTasks.forEach(st => {
+        counts[st.currentNpcType] = (counts[st.currentNpcType] || 0) + 1;
+    });
 
-    if (forceStore) {
-        return (
-             <div className="flex items-center gap-1.5 text-xs md:text-sm">
-                <div className="flex flex-col items-center text-gray-400">
-                    <div className="bg-gray-700 p-1 rounded text-cyan-400"><HarvestIcon /></div>
-                    <span>Harvest</span>
-                </div>
-                <span className="text-gray-500">→</span>
-                 <div className="flex flex-col items-center text-green-400">
-                    <WarehouseIcon />
-                    <span>Warehouse</span>
-                </div>
-            </div>
-        );
-    }
-
-    const isStartNewCycle = currentNpcType === NpcType.F;
-    const stockItem = warehouseItems.find(i => i.id === 'f-pet-stock');
-    const stockCount = stockItem ? stockItem.currentStock : 0;
-    const isCrossHouse = targetHouseId && targetHouseId !== houseId;
+    const stockReq = task.requiredWarehouseItems.find(i => i.itemId === 'f-pet-stock');
+    const currentStock = warehouseItems.find(i => i.id === 'f-pet-stock')?.currentStock || 0;
+    const hasStock = !stockReq || currentStock >= stockReq.count;
 
     return (
-        <div className="flex items-center gap-1.5 text-xs md:text-sm">
-            {isStartNewCycle ? (
-                <>
-                    <div className="flex flex-col items-center text-gray-400" title="Take from Warehouse">
-                        <WarehouseIcon />
-                        <span className={`${stockCount > 0 ? 'text-gray-400' : 'text-red-500 font-bold'}`}>
-                            {stockCount}x
-                        </span>
-                    </div>
-                    <span className="text-gray-500">→</span>
-                    <div className="flex flex-col items-center">
-                        <div className="bg-gray-700 p-1 rounded text-cyan-400"><HarvestIcon /></div>
-                        <span>Start</span>
-                    </div>
-                </>
-            ) : (
-                <>
-                   <div className="flex flex-col items-center text-gray-400">
-                        <div className="bg-gray-700 p-1 rounded"><HarvestIcon /></div>
-                        <span>Harvest</span>
-                    </div>
-                    <span className="text-gray-500">→</span>
-                    <div className="flex flex-col items-center text-purple-400">
-                        <TamerIcon />
-                        <span>Upgrade</span>
-                    </div>
-                    <span className="text-gray-500">→</span>
-                    <div className="flex flex-col items-center text-cyan-400">
-                        {isCrossHouse ? (
-                            <div className="bg-purple-900/50 border border-purple-500 px-1 rounded text-purple-200 flex items-center gap-1">
-                                <VirtualIcon /> H#{targetHouseId}
-                            </div>
-                        ) : (
-                             <div className="border border-cyan-500 px-1 rounded flex items-center gap-1">
-                                 <LinkedIcon /> Slot
-                             </div>
-                        )}
-                        <span>Start</span>
-                    </div>
-                </>
+        <div className="flex flex-wrap gap-2 items-center text-xs md:text-sm">
+            {/* Input Req */}
+            {stockReq && (
+                <div className={`flex items-center gap-1 px-2 py-1 rounded border ${hasStock ? 'bg-gray-800 border-gray-600 text-gray-300' : 'bg-red-900/50 border-red-500 text-red-200'}`}>
+                    <WarehouseIcon />
+                    <span>{stockReq.count}x Stock</span>
+                </div>
             )}
-            <div className="ml-1 bg-gray-900 px-2 py-1 rounded border border-gray-700 flex items-center gap-1">
-                <PetBadge type={nextNpcType!} />
-                <span className="text-gray-300 font-semibold">-Pet</span>
-            </div>
-            {virtualHouseName && (
-                 <div className="ml-1 text-xs text-purple-400 font-bold border border-purple-800 px-1 rounded" title={virtualHouseName}>VH</div>
-            )}
+            
+            <span className="text-gray-500">Harvest:</span>
+            {Object.entries(counts).map(([type, count]) => (
+                 <div key={type} className="flex items-center gap-1">
+                    <span className="font-bold">{count}x</span>
+                    <PetBadge type={type as NpcType} />
+                </div>
+            ))}
         </div>
     );
 };
 
-const StepByStepGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
-    const { currentNpcType, nextNpcType, houseId, slotIndex, forceStore, targetHouseId, targetSlotIndex, virtualHouseName } = task;
-    const isStartNewCycle = currentNpcType === NpcType.F;
-    const isSRank = nextNpcType === NpcType.S;
-    const fStockItem = warehouseItems.find(i => i.id === 'f-pet-stock');
-    const fStockCount = fStockItem ? fStockItem.currentStock : 0;
-    const isCrossHouse = targetHouseId !== undefined && targetHouseId !== houseId;
+const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
+    const stockReq = task.requiredWarehouseItems.find(i => i.itemId === 'f-pet-stock');
+    const currentStock = warehouseItems.find(i => i.id === 'f-pet-stock')?.currentStock || 0;
+    const hasStock = !stockReq || currentStock >= stockReq.count;
 
-    if (isSRank) {
-         return (
-            <div className="space-y-4">
-                <div className="bg-yellow-900/30 p-3 rounded border border-yellow-700/50">
-                    <h4 className="font-bold text-yellow-400 flex items-center gap-2">
-                        <ChampionIcon /> MISSION: COLLECTION
-                    </h4>
-                    {virtualHouseName && <p className="text-xs text-purple-400 mt-1">Virtual House: {virtualHouseName}</p>}
-                </div>
-                 <ol className="list-decimal list-inside space-y-3 text-sm text-gray-200">
-                    <li className="pl-2">
-                        Go to <span className="text-cyan-300 font-bold">House #{houseId}</span>.
-                    </li>
-                    <li className="pl-2">
-                        Claim the finished <PetBadge type={currentNpcType} /> pet (Slot {slotIndex + 1}).
-                    </li>
-                    <li className="pl-2">
-                        Go to Tamer NPC. Complete quest to receive <PetBadge type={NpcType.S} /> pet.
-                    </li>
-                    <li className="pl-2">
-                        <strong>Verify:</strong> You now have the S-Pet in your inventory/warehouse.
-                    </li>
-                </ol>
-            </div>
-         )
+    const harvestList = task.subTasks.map(st => st.currentNpcType).join(', ');
+    const upgradeList = task.subTasks.filter(st => st.actionType === 'HARVEST_AND_RESTART' || (st.actionType as any) === 'COLLECT_S' && st.nextNpcType === NpcType.S).map(st => `${st.currentNpcType}→${st.nextNpcType}`).join(', ');
+    
+    // Group placements by location
+    const placements: string[] = [];
+    // 1. Place items back in current house (from F-Stock or upgraded pets)
+    const currentHousePlacements = task.subTasks.filter(st => 
+        st.actionType === 'HARVEST_AND_RESTART' && (st.targetHouseId === task.houseId || !st.targetHouseId)
+    );
+    if (currentHousePlacements.length > 0) {
+        placements.push(`In House #${task.houseId}: Place ${currentHousePlacements.map(p => p.nextNpcType).join(', ')}`);
     }
 
-    if (forceStore) {
-        return (
-            <div className="space-y-4">
-                 <div className="bg-green-900/30 p-3 rounded border border-green-700/50">
-                    <h4 className="font-bold text-green-400 flex items-center gap-2">
-                        <WarehouseIcon /> MISSION: HARVEST & STORE
-                    </h4>
-                </div>
-                <ol className="list-decimal list-inside space-y-3 text-sm text-gray-200">
-                     <li className="pl-2">
-                        Go to <span className="text-cyan-300 font-bold">House #{houseId}</span>.
-                    </li>
-                    <li className="pl-2">
-                        Harvest the finished <PetBadge type={currentNpcType} /> pet (Slot {slotIndex + 1}).
-                    </li>
-                     <li className="pl-2">
-                         <strong>Do NOT upgrade.</strong> Open Warehouse.
-                    </li>
-                    <li className="pl-2">
-                         Deposit the <PetBadge type={currentNpcType} /> pet into your storage.
-                    </li>
-                </ol>
-            </div>
-        )
-    }
+    // 2. Cross-House placements
+    const crossHouse = task.subTasks.filter(st => st.targetHouseId && st.targetHouseId !== task.houseId);
+    crossHouse.forEach(ch => {
+        placements.push(`Go to House #${ch.targetHouseId}: Place ${ch.nextNpcType} (Slot ${(ch.targetSlotIndex || 0) + 1})`);
+    });
 
+    // 3. Warehouse deposits
+    const deposits = task.subTasks.filter(st => st.actionType === 'HARVEST_AND_STORE');
+    
     return (
-        <div className="space-y-4">
-             <div className="bg-cyan-900/30 p-3 rounded border border-cyan-700/50">
-                <h4 className="font-bold text-cyan-400 flex items-center gap-2">
-                    {isStartNewCycle ? <WarehouseIcon /> : <TamerIcon />} 
-                    MISSION: {isStartNewCycle ? 'NEW CYCLE START' : (isCrossHouse ? 'TRANSFER & UPGRADE' : 'UPGRADE & RESTART')}
-                </h4>
-                {virtualHouseName && <p className="text-xs text-purple-400 mt-1 ml-6">Virtual House: {virtualHouseName}</p>}
-            </div>
-            <ol className="list-decimal list-inside space-y-3 text-sm text-gray-200">
-                <li className="pl-2">
-                    Go to <span className="text-cyan-300 font-bold">House #{houseId}</span>.
-                </li>
-                <li className="pl-2">
-                    Harvest the finished <PetBadge type={currentNpcType} /> pet (Slot {slotIndex + 1}).
-                </li>
-                {isStartNewCycle ? (
-                    <li className="pl-2">
-                        Open Warehouse. Retrieve <span className="font-bold text-white">1x F-Pet Stock</span>.
-                        <span className={`ml-2 text-xs ${fStockCount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            (Current Stock: {fStockCount})
-                        </span>
-                    </li>
-                ) : (
-                    <li className="pl-2">
-                        Go to Tamer NPC. Upgrade <PetBadge type={currentNpcType} /> to <PetBadge type={nextNpcType!} />.
-                    </li>
-                )}
-                <li className="pl-2">
-                    {isCrossHouse ? (
-                        <span>Go to <span className="text-purple-400 font-bold">House #{targetHouseId}</span>.</span>
-                    ) : (
-                        <span>Return to House #{houseId}.</span>
-                    )}
-                </li>
-                <li className="pl-2">
-                    Place the <PetBadge type={nextNpcType!} /> pet into Slot {(targetSlotIndex || slotIndex) + 1}.
-                </li>
-                 <li className="pl-2">
-                    Confirm the timer has started.
-                </li>
-            </ol>
+        <div className="space-y-5 text-sm text-gray-200">
+             {/* Step 1: Warehouse Prep */}
+             {stockReq && (
+                <div className={`p-3 rounded border ${hasStock ? 'bg-gray-800 border-gray-600' : 'bg-red-900/30 border-red-500'}`}>
+                    <h5 className="font-bold text-cyan-400 mb-1 flex items-center gap-2"><WarehouseIcon /> Step 1: Warehouse Prep</h5>
+                    <ul className="list-disc list-inside">
+                        <li>
+                            Withdraw <strong>{stockReq.count}x F-Pet Stock</strong>. 
+                            <span className={`ml-2 text-xs ${hasStock ? 'text-green-400' : 'text-red-400 font-bold'}`}>
+                                (Have: {currentStock})
+                            </span>
+                        </li>
+                    </ul>
+                </div>
+             )}
+
+             {/* Step 2: House Harvest */}
+             <div className="p-3 rounded bg-gray-800 border border-gray-600">
+                <h5 className="font-bold text-cyan-400 mb-1 flex items-center gap-2"><HarvestIcon /> Step 2: House #{task.houseId} Harvest</h5>
+                <ul className="list-disc list-inside">
+                    <li>Harvest <strong>ALL</strong> finished pets: {harvestList}.</li>
+                    {/* Optimisation: If we harvested an F, we can place the New F immediately if we have it, 
+                        BUT strict ordering says Upgrade first. However, F-Stock is raw. 
+                        To keep it simple: Collect everything first. */}
+                </ul>
+             </div>
+
+             {/* Step 3: Upgrade Run */}
+             {upgradeList && (
+                 <div className="p-3 rounded bg-purple-900/30 border border-purple-600">
+                    <h5 className="font-bold text-purple-400 mb-1 flex items-center gap-2"><TamerIcon /> Step 3: Tamer Upgrade Run</h5>
+                    <ul className="list-disc list-inside">
+                        <li>Visit Tamer. Batch upgrade: <strong>{upgradeList}</strong>.</li>
+                    </ul>
+                 </div>
+             )}
+
+             {/* Step 4: Placement */}
+             {(placements.length > 0 || deposits.length > 0) && (
+                 <div className="p-3 rounded bg-green-900/30 border border-green-600">
+                    <h5 className="font-bold text-green-400 mb-1 flex items-center gap-2"><LinkedIcon /> Step 4: Finalize</h5>
+                    <ul className="list-disc list-inside space-y-1">
+                        {placements.map((p, i) => <li key={i}>{p}.</li>)}
+                        {deposits.map((d, i) => (
+                            <li key={`dep-${i}`}>Deposit <strong>{d.currentNpcType}-Pet</strong> into Warehouse.</li>
+                        ))}
+                    </ul>
+                 </div>
+             )}
         </div>
     );
 }
@@ -235,11 +155,11 @@ const TaskTable: React.FC<{
     isInteractive: boolean;
     onTaskComplete?: (task: DailyBriefingTask) => void;
     completedTaskIds?: Set<string>;
-    activeTaskKey?: string | null;
+    activeTaskId?: string | null; // Changed from key to ID
     isHistoryMode?: boolean;
     onUndo?: (task: DailyBriefingTask) => void;
     warehouseItems?: WarehouseItem[];
-}> = ({ tasks, title, isInteractive, onTaskComplete, completedTaskIds, activeTaskKey, isHistoryMode, onUndo, warehouseItems = [] }) => {
+}> = ({ tasks, title, isInteractive, onTaskComplete, completedTaskIds, activeTaskId, isHistoryMode, onUndo, warehouseItems = [] }) => {
     
     if (tasks.length === 0) {
         return (
@@ -267,30 +187,28 @@ const TaskTable: React.FC<{
                                 <tr>
                                     {isInteractive && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>}
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">House</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Current</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Task Flow</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Batch Details</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-gray-800 divide-y divide-gray-700">
                             {groupedTasks[block].map((task) => {
-                                const taskKey = `${task.houseId}-${task.slotIndex}`;
-                                const isCompleted = completedTaskIds?.has(taskKey);
-                                const isActive = isInteractive && !isCompleted && taskKey === activeTaskKey;
+                                const isCompleted = completedTaskIds?.has(task.id);
+                                const isActive = isInteractive && !isCompleted && task.id === activeTaskId;
                                 const isPending = isInteractive && !isCompleted && !isActive;
 
                                 return (
-                                    <tr key={taskKey} className={`transition-colors 
+                                    <tr key={task.id} className={`transition-colors 
                                         ${isCompleted ? 'bg-gray-700 opacity-50' : 
                                           isHistoryMode ? 'bg-gray-800' :
                                           isPending ? 'opacity-60' : 
                                           isActive ? 'bg-cyan-900/40' : 'hover:bg-gray-700/50'}`}>
                                         {isInteractive && (
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 w-16">
                                                 {isHistoryMode ? (
                                                      <button 
                                                         onClick={() => onUndo?.(task)}
                                                         className="text-xs bg-gray-600 hover:bg-gray-500 text-white px-2 py-1 rounded border border-gray-500"
-                                                        title="Undo this task"
+                                                        title="Undo this batch"
                                                      >
                                                         Undo
                                                      </button>
@@ -308,13 +226,12 @@ const TaskTable: React.FC<{
                                         )}
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-200">
                                             #{task.houseId}
-                                            <div className="text-xs text-gray-400">Slot {task.slotIndex + 1}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <PetBadge type={task.currentNpcType} />
+                                            <div className="text-xs text-gray-500 font-normal">
+                                                {task.subTasks.length} Task{task.subTasks.length > 1 ? 's' : ''}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <TaskFlowVisual task={task} warehouseItems={warehouseItems} />
+                                            <BatchTaskVisual task={task} warehouseItems={warehouseItems} />
                                             <div className="text-xs text-gray-500 mt-1">Est: {task.estFinishTime}</div>
                                         </td>
                                     </tr>
@@ -339,7 +256,6 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
   const [recentHistoryTasks, setRecentHistoryTasks] = useState<DailyBriefingTask[]>([]);
   const [nextCheckin, setNextCheckin] = useState<Date | null>(null);
   
-  // Modals state
   const [confirmTask, setConfirmTask] = useState<DailyBriefingTask | null>(null);
   const [undoTask, setUndoTask] = useState<DailyBriefingTask | null>(null);
   const [undoDetails, setUndoDetails] = useState<string>('');
@@ -352,6 +268,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
     setUpcomingTasks(upcomingTasks);
     setNextCheckin(nextCheckin);
 
+    // Filter History by Session
     if (checkinTimes.length > 0 && completedTaskLog.length > 0) {
         const nowDate = new Date(now);
         const sortedCheckins = [...checkinTimes].sort((a,b) => a-b);
@@ -395,25 +312,10 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
   };
 
   const initiateUndo = (task: DailyBriefingTask) => {
-      const logEntry = completedTaskLog.find(l => 
-          l.task.houseId === task.houseId && 
-          l.task.slotIndex === task.slotIndex && 
-          l.task.currentPet === task.currentPet
-      );
+      const logEntry = completedTaskLog.find(l => l.task.id === task.id);
 
       if (logEntry) {
-          const parts = [];
-          parts.push(`1. Restore ${logEntry.changes.sourcePetType}-Pet to House #${logEntry.changes.sourceHouseId} (Slot ${logEntry.changes.sourceSlotIndex + 1}).`);
-          if (logEntry.changes.targetHouseId) {
-              parts.push(`2. Remove ${logEntry.changes.targetPetType}-Pet from House #${logEntry.changes.targetHouseId} (Slot ${(logEntry.changes.targetSlotIndex || 0) + 1}).`);
-          } else if (logEntry.changes.warehouseWipId) {
-              parts.push(`2. Remove 1x ${logEntry.changes.targetPetType}-Pet from Warehouse WIP.`);
-          }
-          if (logEntry.changes.warehouseConsumedId) {
-              parts.push(`3. Refund 1x ${logEntry.changes.sourcePetType}-Pet Stock to Warehouse.`);
-          }
-          
-          setUndoDetails(parts.join('\n'));
+          setUndoDetails(`Undo batch: ${task.taskLabel}\nIncludes ${task.subTasks.length} operations.\nThis will reset slots to their finished state.`);
           setUndoTask(task);
       }
   };
@@ -426,58 +328,62 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
     let newWarehouseItems = JSON.parse(JSON.stringify(warehouseItems));
     const now = simulatedTime || Date.now();
 
-    const sourceHouse = newHouses.find((h: House) => h.id === task.houseId);
-    if (!sourceHouse) return;
-    
-    const sourceSlot = sourceHouse.slots[task.slotIndex];
-    const currentNpcType = sourceSlot.npc.type;
-    const outputPetType = task.nextNpcType; 
-    
-    if (!currentNpcType || !outputPetType) return;
+    const affectedSlotsSnapshot: CompletedTaskLog['affectedSlots'] = [];
 
-    // Prepare Log Entry
-    const logEntry: CompletedTaskLog = {
-        id: crypto.randomUUID(),
-        task: task,
-        timestamp: now,
-        changes: {
-            sourceHouseId: task.houseId,
-            sourceSlotIndex: task.slotIndex,
-            sourcePetType: currentNpcType
-        }
-    };
-    
-    // Step 1: Handle the output pet
-    if (outputPetType === NpcType.S) {
-        onUpdateCollectedPets(NpcType.S, 1);
-        logEntry.changes.targetPetType = NpcType.S; 
-    } else if (task.forceStore) {
-         // Independent Harvest to Warehouse
-         const wipMap: { [key in NpcType]?: string } = {
-            [NpcType.F]: 'f-pet-wip-error',
-            [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
-            [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
-            [NpcType.A]: 'a-pet-wip',
-        };
-        const wipItemId = wipMap[outputPetType];
-        const wipItem = newWarehouseItems.find((item: WarehouseItem) => item.id === wipItemId);
-        if (wipItem) {
-            wipItem.currentStock += 1;
-            logEntry.changes.warehouseWipId = wipItemId;
-            logEntry.changes.targetPetType = outputPetType;
+    // Execute SubTasks
+    task.subTasks.forEach(st => {
+        // Snapshot for Undo
+        affectedSlotsSnapshot.push({
+            houseId: task.houseId,
+            slotIndex: st.slotIndex,
+            previousPetType: st.currentNpcType
+        });
+
+        // 1. Clear Source
+        const house = newHouses.find((h: House) => h.id === task.houseId);
+        const sourceSlot = house.slots[st.slotIndex];
+        sourceSlot.pet = { name: null, startTime: null, finishTime: null };
+
+        // 2. Consume Stock (if F)
+        if (st.currentNpcType === NpcType.F) {
+             const fStock = newWarehouseItems.find((w: WarehouseItem) => w.id === 'f-pet-stock');
+             if (fStock && fStock.currentStock > 0) fStock.currentStock--;
+             
+             // Auto-restart F if staying in house (HARVEST_AND_RESTART implies this for F)
+             // Actually, if HARVEST_AND_RESTART, we assume we use the F-Stock to put F back in.
+             // For other types, we use the upgrade logic below.
         }
 
-    } else if (task.targetHouseId !== undefined && task.targetSlotIndex !== undefined) {
-        // Explicit Routing (Linked or Virtual)
-        const targetHouse = newHouses.find((h: House) => h.id === task.targetHouseId);
-        if (targetHouse) {
-            const targetSlot = targetHouse.slots[task.targetSlotIndex];
-            const cycle = cycleTimes.find(c => c.npcType === outputPetType);
-            
-            if (cycle) {
-                const startTime = now;
-                targetSlot.pet = {
-                    name: `${outputPetType}-Pet`,
+        // 3. Handle Result (Place or Store)
+        if (st.actionType === 'COLLECT_S') {
+             onUpdateCollectedPets(NpcType.S, 1);
+        } else if (st.actionType === 'HARVEST_AND_STORE') {
+             const wipMap: { [key in NpcType]?: string } = {
+                [NpcType.F]: 'f-pet-stock', // Shouldnt happen usually
+                [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
+                [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
+                [NpcType.A]: 'a-pet-wip',
+            };
+            const itemId = wipMap[st.currentNpcType]; // Store what we harvested? Or next?
+            // If HARVEST_AND_STORE, we assume Independent mode, so we store the Current Type (no upgrade).
+            // Wait, logic in geminiService says: task: Harvest E to Warehouse.
+            if (itemId) {
+                const item = newWarehouseItems.find((w: WarehouseItem) => w.id === itemId);
+                if (item) item.currentStock++;
+            }
+        } else if (st.actionType === 'HARVEST_AND_RESTART') {
+             // This implies UPGRADE and PLACEMENT
+             const targetHId = st.targetHouseId || task.houseId;
+             const targetSIdx = st.targetSlotIndex !== undefined ? st.targetSlotIndex : st.slotIndex;
+             
+             const targetHouse = newHouses.find((h: House) => h.id === targetHId);
+             const targetSlot = targetHouse.slots[targetSIdx];
+             
+             const cycle = cycleTimes.find(c => c.npcType === st.nextNpcType);
+             if (cycle) {
+                 const startTime = now;
+                 targetSlot.pet = {
+                    name: `${st.nextNpcType}-Pet`,
                     startTime,
                     finishTime: startTime + cycle.time * 3600000
                 };
@@ -486,60 +392,18 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
                     expirationDate.setDate(expirationDate.getDate() + targetSlot.npc.duration);
                     targetSlot.npc.expiration = expirationDate.toISOString();
                 }
-                
-                // Log Target Info
-                logEntry.changes.targetHouseId = task.targetHouseId;
-                logEntry.changes.targetSlotIndex = task.targetSlotIndex;
-                logEntry.changes.targetPetType = outputPetType;
-            }
+             }
         }
-    } else {
-        // Fallback safe store if routing failed
-         const wipMap: { [key in NpcType]?: string } = {
-                [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
-                [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
-                [NpcType.A]: 'a-pet-wip',
-            };
-        const wipItemId = wipMap[outputPetType];
-        const wipItem = newWarehouseItems.find((item: WarehouseItem) => item.id === wipItemId);
-        if (wipItem) {
-            wipItem.currentStock += 1;
-            logEntry.changes.warehouseWipId = wipItemId;
-            logEntry.changes.targetPetType = outputPetType;
-        }
-    }
+    });
 
-    // Step 2: Clear source
-    sourceSlot.pet = { name: null, startTime: null, finishTime: null };
-
-    // Step 3: Auto-restock
-    const inputMap: { [key in NpcType]?: string } = {
-        [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip',
-        [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip',
-        [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip',
+    // Create Log
+    const logEntry: CompletedTaskLog = {
+        id: task.id,
+        task: task,
+        timestamp: now,
+        summary: `Completed batch ${task.id}`,
+        affectedSlots: affectedSlotsSnapshot
     };
-    const inputItemId = inputMap[currentNpcType];
-    const inputItem = newWarehouseItems.find((item: WarehouseItem) => item.id === inputItemId);
-
-    if (inputItem && inputItem.currentStock > 0) {
-        inputItem.currentStock -= 1;
-        logEntry.changes.warehouseConsumedId = inputItemId; 
-
-        const cycle = cycleTimes.find(c => c.npcType === currentNpcType);
-        if (cycle) {
-            const startTime = now;
-            sourceSlot.pet = {
-                name: `${currentNpcType}-Pet`,
-                startTime,
-                finishTime: startTime + cycle.time * 3600000
-            };
-            if (!sourceSlot.npc.expiration && sourceSlot.npc.duration) {
-                const expirationDate = new Date(now);
-                expirationDate.setDate(expirationDate.getDate() + sourceSlot.npc.duration);
-                sourceSlot.npc.expiration = expirationDate.toISOString();
-            }
-        }
-    }
 
     setHouses(newHouses);
     setWarehouseItems(newWarehouseItems);
@@ -549,57 +413,58 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
 
   const executeUndo = () => {
       if (!undoTask) return;
-      
-      const logIndex = completedTaskLog.findIndex(l => l.task.houseId === undoTask.houseId && l.task.slotIndex === undoTask.slotIndex);
-      if (logIndex === -1) {
-          alert("Could not find history record for this task.");
-          setUndoTask(null);
-          return;
-      }
-      const logEntry = completedTaskLog[logIndex];
-      const { changes } = logEntry;
+      const logIndex = completedTaskLog.findIndex(l => l.task.id === undoTask.id);
+      if (logIndex === -1) return;
 
+      const logEntry = completedTaskLog[logIndex];
+      const task = logEntry.task;
       let newHouses = JSON.parse(JSON.stringify(houses));
       let newWarehouseItems = JSON.parse(JSON.stringify(warehouseItems));
+
+      // Simplified Undo: 
+      // 1. Restore Source Slots to Finished State
+      // 2. Clear Target Slots / Refund Warehouse
       
-      // 1. Restore Source Pet
-      const sourceHouse = newHouses.find((h: House) => h.id === changes.sourceHouseId);
-      if (!sourceHouse) return;
-      const sourceSlot = sourceHouse.slots[changes.sourceSlotIndex];
+      task.subTasks.forEach(st => {
+          // Restore Source
+          const sourceHouse = newHouses.find((h: House) => h.id === task.houseId);
+          const sourceSlot = sourceHouse.slots[st.slotIndex];
+          // Hack: Set finish time to 1 second ago
+          sourceSlot.pet = {
+              name: `${st.currentNpcType}-Pet`,
+              startTime: Date.now() - 1000000,
+              finishTime: Date.now() - 1000
+          };
 
-      if (changes.warehouseConsumedId) {
-          const consumedItem = newWarehouseItems.find((w: WarehouseItem) => w.id === changes.warehouseConsumedId);
-          if (consumedItem) consumedItem.currentStock += 1;
-          sourceSlot.pet = { name: null, startTime: null, finishTime: null };
-      }
-
-      // Restore original finished pet
-      sourceSlot.pet = {
-          name: `${changes.sourcePetType}-Pet`,
-          startTime: Date.now() - 1000000,
-          finishTime: Date.now() - 1000 
-      };
-
-      // 2. Remove Target Pet
-      if (changes.targetPetType === NpcType.S) {
-           onUpdateCollectedPets(NpcType.S, -1);
-      } else if (changes.targetHouseId !== undefined) {
-          const targetHouse = newHouses.find((h: House) => h.id === changes.targetHouseId);
-          if (targetHouse) {
-              const targetSlot = targetHouse.slots[changes.targetSlotIndex!];
-              if (targetSlot.pet.name === `${changes.targetPetType}-Pet`) {
-                  targetSlot.pet = { name: null, startTime: null, finishTime: null };
-              } else {
-                  console.warn("Target slot contents changed. Removing anyway to enforce undo.");
-                  targetSlot.pet = { name: null, startTime: null, finishTime: null };
-              }
+          // Reverse Actions
+          if (st.currentNpcType === NpcType.F) {
+              const fStock = newWarehouseItems.find((w: WarehouseItem) => w.id === 'f-pet-stock');
+              if (fStock) fStock.currentStock++;
           }
-      } else if (changes.warehouseWipId) {
-          const wipItem = newWarehouseItems.find((w: WarehouseItem) => w.id === changes.warehouseWipId);
-          if (wipItem && wipItem.currentStock > 0) {
-              wipItem.currentStock -= 1;
+
+          if (st.actionType === 'COLLECT_S') {
+              onUpdateCollectedPets(NpcType.S, -1);
+          } else if (st.actionType === 'HARVEST_AND_STORE') {
+               // Remove from Warehouse
+               const wipMap: { [key in NpcType]?: string } = {
+                [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
+                [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
+                [NpcType.A]: 'a-pet-wip',
+                };
+                const itemId = wipMap[st.currentNpcType];
+                if (itemId) {
+                    const item = newWarehouseItems.find((w: WarehouseItem) => w.id === itemId);
+                    if (item) item.currentStock--;
+                }
+          } else if (st.actionType === 'HARVEST_AND_RESTART') {
+              // Clear Target Slot
+              const targetHId = st.targetHouseId || task.houseId;
+              const targetSIdx = st.targetSlotIndex !== undefined ? st.targetSlotIndex : st.slotIndex;
+              const targetHouse = newHouses.find((h: House) => h.id === targetHId);
+              const targetSlot = targetHouse.slots[targetSIdx];
+              targetSlot.pet = { name: null, startTime: null, finishTime: null };
           }
-      }
+      });
 
       setHouses(newHouses);
       setWarehouseItems(newWarehouseItems);
@@ -607,11 +472,10 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       const newLog = [...completedTaskLog];
       newLog.splice(logIndex, 1);
       setCompletedTaskLog(newLog);
-      
       setUndoTask(null);
   };
 
-  const activeTaskKey = dueTasks.length > 0 ? `${dueTasks[0].houseId}-${dueTasks[0].slotIndex}` : null;
+  const activeTaskId = dueTasks.length > 0 ? dueTasks[0].id : null;
 
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg p-6">
@@ -627,13 +491,13 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
           tasks={dueTasks}
           isInteractive={true}
           onTaskComplete={initiateTaskCompletion}
-          activeTaskKey={activeTaskKey}
+          activeTaskId={activeTaskId}
           warehouseItems={warehouseItems}
       />
       
       {recentHistoryTasks.length > 0 && (
           <TaskTable
-              title="Recently Completed (Current & Previous Session)"
+              title="Recently Completed"
               tasks={recentHistoryTasks}
               isInteractive={true}
               isHistoryMode={true}
@@ -643,7 +507,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       )}
 
       <TaskTable
-          title={`Upcoming for Next Check-in (${nextCheckin ? nextCheckin.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '...'})`}
+          title={`Upcoming`}
           tasks={upcomingTasks}
           isInteractive={false}
           warehouseItems={warehouseItems}
@@ -653,10 +517,10 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
         isOpen={!!confirmTask}
         onClose={() => setConfirmTask(null)}
         onConfirm={executeTaskComplete}
-        title="Mission Checklist"
+        title="Optimized Mission Workflow"
       >
          {confirmTask && (
-             <StepByStepGuide task={confirmTask} warehouseItems={warehouseItems} />
+             <OptimizedWorkflowGuide task={confirmTask} warehouseItems={warehouseItems} />
          )}
       </ConfirmationModal>
 
@@ -667,13 +531,10 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
         title="Confirm Undo"
       >
           <div className="space-y-3">
-             <p className="text-red-400 font-bold">Warning: This will reverse the following actions:</p>
+             <p className="text-red-400 font-bold">Warning: This will reverse the batch action.</p>
              <pre className="bg-gray-900 p-3 rounded text-xs text-gray-300 whitespace-pre-wrap font-mono">
                  {undoDetails}
              </pre>
-             <p className="text-sm text-gray-400">
-                 Ensure the target house/slot has not been manually modified since completion, or data may be inconsistent.
-             </p>
           </div>
       </ConfirmationModal>
     </div>

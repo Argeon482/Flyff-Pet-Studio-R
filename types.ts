@@ -65,20 +65,29 @@ export interface CycleTime {
   time: number; // in hours
 }
 
+// Updated to support batched sub-tasks
 export interface DailyBriefingTask {
+  id: string; // Unique ID for the batch
   houseId: number;
-  slotIndex: number;
-  currentPet: string;
-  task: string;
-  estFinishTime: string;
   serviceBlock: string;
-  currentNpcType: NpcType;
-  nextNpcType: NpcType | null;
-  forceStore?: boolean; 
-  // Explicit routing instructions
-  targetHouseId?: number; 
-  targetSlotIndex?: number;
-  virtualHouseName?: string; // For display purposes
+  estFinishTime: string;
+  
+  // The overarching description (e.g. "Service House #1")
+  taskLabel: string;
+
+  // The specific sub-actions involved in this batch
+  subTasks: {
+      slotIndex: number;
+      currentNpcType: NpcType;
+      nextNpcType: NpcType;
+      actionType: 'HARVEST_AND_RESTART' | 'HARVEST_AND_STORE' | 'COLLECT_S';
+      targetHouseId?: number; // For cross-house moves
+      targetSlotIndex?: number;
+      virtualHouseName?: string;
+  }[];
+
+  // Aggregated requirements
+  requiredWarehouseItems: { itemId: string; count: number }[];
 }
 
 export interface DailyBriefingData {
@@ -142,16 +151,14 @@ export interface CompletedTaskLog {
     id: string;
     task: DailyBriefingTask;
     timestamp: number;
-    changes: {
-        sourceHouseId: number;
-        sourceSlotIndex: number;
-        sourcePetType: NpcType;
-        targetHouseId?: number;
-        targetSlotIndex?: number;
-        targetPetType?: NpcType;
-        warehouseWipId?: string;
-        warehouseConsumedId?: string;
-    }
+    // We store a simplified snapshot of changes for the log
+    summary: string; 
+    // Store enough data to attempt an undo (though complex batch undo is tricky, we'll store the pre-state snapshot ideally, but here we keep it simple)
+    affectedSlots: {
+        houseId: number;
+        slotIndex: number;
+        previousPetType: NpcType;
+    }[];
 }
 
 export interface AppState {
@@ -163,5 +170,5 @@ export interface AppState {
     salesHistory: SaleRecord[];
     checkinTimes: number[];
     completedTaskLog: CompletedTaskLog[];
-    virtualHouses: VirtualHouse[]; // New registry for cross-house chains
+    virtualHouses: VirtualHouse[]; 
 }

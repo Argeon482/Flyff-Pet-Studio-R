@@ -86,7 +86,7 @@ const calculateActualWeeklyFinances = (
 };
 
 
-// RE-IMPLEMENTATION with VirtualHouses support
+// RE-IMPLEMENTATION with House Batching Logic
 export const generateDailyBriefing = (
     houses: House[], 
     cycleTimes: CycleTime[], 
@@ -110,133 +110,124 @@ export const generateDailyBriefing = (
       nextCheckin = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), sortedCheckinHours[0] || 9, 0, 0);
     }
 
-    const allFinishedSlots = houses.flatMap(h => 
-        h.slots
-            .map((s, i) => ({ ...s, houseId: h.id, serviceBlock: h.serviceBlock, slotIndex: i }))
-            .filter(s => s.pet.finishTime)
-    );
-    
     const nowTimestamp = now.getTime();
-    const dueSlots = allFinishedSlots.filter(s => s.pet.finishTime! <= nowTimestamp);
-    const upcomingSlots = allFinishedSlots.filter(s => s.pet.finishTime! > nowTimestamp && s.pet.finishTime! < nextCheckin!.getTime());
+    const nextCheckinTimestamp = nextCheckin!.getTime();
 
     const npcRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A];
-    const petRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A, NpcType.S];
 
-    const mapSlotsToTasks = (slots: typeof allFinishedSlots): DailyBriefingTask[] => {
-        return slots.map((slot): DailyBriefingTask => {
-            const currentNpcType = slot.npc.type!;
-            const currentRankIndex = npcRankOrder.indexOf(currentNpcType);
-            const currentPetName = slot.pet.name || `${currentNpcType}-Pet`;
-            const finishTime = new Date(slot.pet.finishTime || 0).toLocaleString();
-            const nextRank = npcRankOrder[currentRankIndex + 1] || NpcType.S; // Default to S if at end
+    // Helper to create batched tasks from a list of finished slots
+    const createBatchedTasks = (filterFn: (finishTime: number) => boolean): DailyBriefingTask[] => {
+        const batchedTasks: DailyBriefingTask[] = [];
+        
+        // Group by House ID first
+        const houseGroups: Record<number, typeof houses[0]['slots'][0] & { slotIndex: number }>[] = [];
+        
+        houses.forEach(h => {
+            const finishedSlotsInHouse = h.slots
+                .map((s, i) => ({ ...s, slotIndex: i }))
+                .filter(s => s.pet.finishTime && filterFn(s.pet.finishTime));
+            
+            if (finishedSlotsInHouse.length > 0) {
+                // Create a batch for this house
+                const subTasks: DailyBriefingTask['subTasks'] = [];
+                const requiredItems: DailyBriefingTask['requiredWarehouseItems'] = [];
+                let maxFinishTime = 0;
 
-            // Determine Task Logic based on Mode
-            const mode = slot.npc.mode || 'LINKED';
-            let taskName = `Harvest ${currentNpcType} & Start ${nextRank}`;
-            if (currentNpcType === NpcType.F) taskName = `Harvest F & Start E (Use Stock)`;
-
-            // Base Task Object
-            const taskBase: DailyBriefingTask = {
-                houseId: slot.houseId,
-                slotIndex: slot.slotIndex,
-                currentPet: currentPetName,
-                task: taskName,
-                estFinishTime: finishTime,
-                serviceBlock: slot.serviceBlock,
-                currentNpcType,
-                nextNpcType: nextRank,
-            };
-
-            // --- LOGIC BRANCHING ---
-
-            // 1. Independent / Flexible Solo
-            if (mode === 'SOLO' && !slot.npc.virtualHouseId) {
-                return {
-                    ...taskBase,
-                    task: `Harvest ${currentNpcType} to Warehouse`,
-                    nextNpcType: currentNpcType, // Loops on itself or just empties
-                    forceStore: true
-                };
-            }
-
-            // 2. Virtual House Chain
-            if (mode === 'SOLO' && slot.npc.virtualHouseId) {
-                const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
-                if (vHouse) {
-                    const currentVIndex = vHouse.slots.findIndex(s => s.houseId === slot.houseId && s.slotIndex === slot.slotIndex);
+                finishedSlotsInHouse.forEach(slot => {
+                    const currentNpcType = slot.npc.type!;
+                    const mode = slot.npc.mode || 'LINKED';
+                    const currentRankIndex = npcRankOrder.indexOf(currentNpcType);
+                    const nextRank = npcRankOrder[currentRankIndex + 1] || NpcType.S;
                     
-                    if (currentVIndex !== -1 && currentVIndex < vHouse.slots.length - 1) {
-                        // Move to next slot in virtual chain
-                        const nextVSlot = vHouse.slots[currentVIndex + 1];
-                        return {
-                            ...taskBase,
-                            task: `Transfer to ${vHouse.name} (Pos ${currentVIndex + 2})`,
-                            targetHouseId: nextVSlot.houseId,
-                            targetSlotIndex: nextVSlot.slotIndex,
-                            virtualHouseName: vHouse.name
-                        };
-                    } else {
-                        // Last slot in virtual chain -> S Pet Collection
-                        return {
-                            ...taskBase,
-                            task: `Claim Sacri S for Sale (${vHouse.name})`,
-                            nextNpcType: NpcType.S
-                        };
+                    if (slot.pet.finishTime! > maxFinishTime) maxFinishTime = slot.pet.finishTime!;
+
+                    // Requirement Check (F-Stock)
+                    if (currentNpcType === NpcType.F) {
+                        const existingReq = requiredItems.find(i => i.itemId === 'f-pet-stock');
+                        if (existingReq) existingReq.count++;
+                        else requiredItems.push({ itemId: 'f-pet-stock', count: 1 });
                     }
-                }
-                // Fallback if VHouse not found
-                return { ...taskBase, forceStore: true, task: `Harvest ${currentNpcType} (VH Error)` };
+
+                    // SubTask Logic
+                    let actionType: DailyBriefingTask['subTasks'][0]['actionType'] = 'HARVEST_AND_RESTART';
+                    let targetHouseId: number | undefined;
+                    let targetSlotIndex: number | undefined;
+                    let virtualHouseName: string | undefined;
+
+                    // 1. Solo/Flexible/Broken
+                    if (mode === 'SOLO' && !slot.npc.virtualHouseId) {
+                        actionType = 'HARVEST_AND_STORE';
+                    }
+                    // 2. Virtual House
+                    else if (mode === 'SOLO' && slot.npc.virtualHouseId) {
+                        const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
+                        if (vHouse) {
+                            virtualHouseName = vHouse.name;
+                            const currentVIndex = vHouse.slots.findIndex(s => s.houseId === h.id && s.slotIndex === slot.slotIndex);
+                             if (currentVIndex !== -1 && currentVIndex < vHouse.slots.length - 1) {
+                                const nextVSlot = vHouse.slots[currentVIndex + 1];
+                                targetHouseId = nextVSlot.houseId;
+                                targetSlotIndex = nextVSlot.slotIndex;
+                                // Note: If moving to SAME house, it stays HARVEST_AND_RESTART logic implicitly by UI, 
+                                // but structure handles cross-house.
+                             } else {
+                                 actionType = 'COLLECT_S'; // Last link in chain
+                             }
+                        } else {
+                            actionType = 'HARVEST_AND_STORE'; // Fallback
+                        }
+                    }
+                    // 3. Linked (Physical)
+                    else {
+                        if (currentRankIndex === npcRankOrder.length - 1) {
+                             actionType = 'COLLECT_S';
+                        } else {
+                            const targetSlotIdx = h.slots.findIndex(s => s.npc.type === nextRank);
+                            if (targetSlotIdx !== -1) {
+                                targetHouseId = h.id;
+                                targetSlotIndex = targetSlotIdx;
+                            } else {
+                                actionType = 'HARVEST_AND_STORE'; // Broken link
+                            }
+                        }
+                    }
+
+                    subTasks.push({
+                        slotIndex: slot.slotIndex,
+                        currentNpcType,
+                        nextNpcType: nextRank,
+                        actionType,
+                        targetHouseId,
+                        targetSlotIndex,
+                        virtualHouseName
+                    });
+                });
+
+                // Sort subtasks: Harvest higher ranks first (reverse order) to free up space? 
+                // Or Harvest F first? The user said: "Collect all, Upgrade all, Place all".
+                // Sorting by slot index is usually fine for display.
+                subTasks.sort((a, b) => a.slotIndex - b.slotIndex);
+
+                batchedTasks.push({
+                    id: `batch-${h.id}-${maxFinishTime}`,
+                    houseId: h.id,
+                    serviceBlock: h.serviceBlock,
+                    taskLabel: `Service House #${h.id}`,
+                    estFinishTime: new Date(maxFinishTime).toLocaleString([], { hour: '2-digit', minute: '2-digit' }),
+                    subTasks,
+                    requiredWarehouseItems: requiredItems
+                });
             }
+        });
 
-            // 3. Linked (Physical House Chain)
-            // Look for next slot in same house
-            const house = houses.find(h => h.id === slot.houseId);
-            if (house) {
-                // Naive check: Next physical slot index
-                // A more robust check would verify the NPC type matches 'nextRank', 
-                // but for 'Linked' we assume standard linear progression 0->1->2.
-                // Or we scan the house for the correct NPC type.
-                
-                if (currentRankIndex === npcRankOrder.length - 1) { // 'A' Pet
-                    return {
-                        ...taskBase,
-                        task: `Claim Sacri S for Sale`,
-                        nextNpcType: NpcType.S
-                    };
-                }
-
-                // Scan house for the target NPC type
-                const targetSlotIndex = house.slots.findIndex(s => s.npc.type === nextRank);
-                if (targetSlotIndex !== -1) {
-                     return {
-                        ...taskBase,
-                        targetHouseId: house.id,
-                        targetSlotIndex: targetSlotIndex
-                    };
-                } else {
-                    // Broken Link: Can't find next NPC in same house
-                    return {
-                        ...taskBase,
-                        task: `Harvest ${currentNpcType} to Warehouse (Link Broken)`,
-                        forceStore: true
-                    };
-                }
-            }
-
-            return taskBase;
-
-        }).filter((task): task is DailyBriefingTask => task !== null && !!task.currentNpcType);
+        return batchedTasks;
     };
-    
-    const dueTasks = mapSlotsToTasks(dueSlots);
-    const upcomingTasks = mapSlotsToTasks(upcomingSlots);
 
-    dueTasks.sort((a, b) => {
-        const rankA = petRankOrder.indexOf(a.nextNpcType!);
-        const rankB = petRankOrder.indexOf(b.nextNpcType!);
-        return rankB - rankA;
-    });
+    const dueTasks = createBatchedTasks((t) => t <= nowTimestamp);
+    const upcomingTasks = createBatchedTasks((t) => t > nowTimestamp && t < nextCheckinTimestamp);
+
+    // Sort batches by service block priority (A, B, C) or number of tasks
+    dueTasks.sort((a, b) => a.serviceBlock.localeCompare(b.serviceBlock));
 
     return { dueTasks, upcomingTasks, nextCheckin };
 };
