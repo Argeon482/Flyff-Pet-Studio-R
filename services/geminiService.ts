@@ -54,20 +54,10 @@ const calculateProjectedProfit = (
     });
 
     // 2. Calculate Revenue based on Sinks
-    // We assume standard chains leading to these sinks to estimate cycle time.
-    // Chain Times (Approximate sum of cycles ending at X):
-    // A-NPC Sink (produces S) -> F->A chain = ~455h
-    // B-NPC Sink (produces A) -> D->B chain = ~175h
-    // D-NPC Sink (produces C) -> F->D chain = ~80h
-    const CHAIN_TIMES: Record<string, number> = {
-        [NpcType.A]: 455, 
-        [NpcType.B]: 175, 
-        [NpcType.C]: 100, 
-        [NpcType.D]: 80, 
-        [NpcType.E]: 30, 
-        [NpcType.F]: 10, 
-    };
-
+    // In a pipeline, throughput is determined by the Cycle Time of the Sink (the last machine),
+    // NOT the sum of the whole chain.
+    // Example: D(50) -> C(50) -> B(75). Pipeline outputs one B every 75 hours (plus idle time).
+    
     // Map Sink NPC Type -> Produced Pet Type
     const OUTPUT_MAP: Record<string, NpcType> = {
         [NpcType.A]: NpcType.S,
@@ -75,39 +65,30 @@ const calculateProjectedProfit = (
         [NpcType.C]: NpcType.B,
         [NpcType.D]: NpcType.C,
         [NpcType.E]: NpcType.D,
-        [NpcType.F]: NpcType.E, // Or just F-Pet if raw? Usually produces E starter
+        [NpcType.F]: NpcType.E, 
     };
     
-    const npcRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A, NpcType.S];
-
     let grossRevenue = 0;
     let grossRevenueAlternativeA = 0;
-    let sPetsCount = 0; // We'll use this for total items count generally
+    let sPetsCount = 0; 
     const producedItemsMap: Record<string, number> = {};
 
     sinks.forEach(sinkType => {
         const producedType = OUTPUT_MAP[sinkType] || NpcType.S;
-        // If sink is A, produced is S.
-        // If sink is B, produced is A.
         
-        const cycleTime = CHAIN_TIMES[sinkType] || 100; 
+        // FIX: Use the actual cycle time of the terminal NPC, not a cumulative chain time.
+        const cycleDef = cycleTimes.find(c => c.npcType === sinkType);
+        const cycleTime = cycleDef ? cycleDef.time : 24; // Fallback
+        
         const throughputPerWeek = (24 * 7) / (cycleTime + avgIdleTime);
 
         const price = prices.petPrices[producedType] || 0;
         grossRevenue += throughputPerWeek * price;
 
-        // Alternative A Calculation:
-        // If we produce S (from A-Sink), what if we sold A inputs?
-        // Actually, if we produce S, the "Alternative" is usually "What if I stopped at A and sold it?"
-        // If we produce A (from B-Sink), that IS the revenue.
         if (producedType === NpcType.S) {
             const aPrice = prices.petPrices[NpcType.A] || 0;
             grossRevenueAlternativeA += throughputPerWeek * aPrice;
             sPetsCount += throughputPerWeek;
-        } else {
-            // If we aren't producing S pets, Alternative A doesn't make sense as a "downgrade",
-            // but we can track it. For dashboard simplicity, just track revenue.
-            // If we produce A pets directly, add to main revenue.
         }
 
         const label = `${producedType}-Pets`;
@@ -124,7 +105,7 @@ const calculateProjectedProfit = (
     }));
 
     const hasChampionHouse = houses.some(h => h.division === Division.CHAMPION);
-    const perfectionExpenses = hasChampionHouse ? (sPetsCount * (prices.petPrices[NpcType.S] || 0)) : 0; // Rough estimate: consuming 1 S-Pet per S-Pet produced if perfecting
+    const perfectionExpenses = hasChampionHouse ? (sPetsCount * (prices.petPrices[NpcType.S] || 0)) : 0; 
 
     const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
 
