@@ -1,3 +1,4 @@
+
 export enum NpcType {
   F = 'F',
   E = 'E',
@@ -73,6 +74,9 @@ export interface DailyBriefingTask {
   
   // The overarching description (e.g. "Service House #1")
   taskLabel: string;
+
+  // Indicates if all active slots in this house are finished (Priority Flag)
+  isFullyReady: boolean;
 
   // The specific sub-actions involved in this batch
   subTasks: {

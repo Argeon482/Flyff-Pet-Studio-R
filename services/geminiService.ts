@@ -1,3 +1,4 @@
+
 import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division, DashboardAnalytics, VirtualHouse } from "../types";
 
 // Calculates the THEORETICAL MAXIMUM throughput of the current layout using Sink Detection
@@ -208,11 +209,15 @@ export const generateDailyBriefing = (
         const batchedTasks: DailyBriefingTask[] = [];
         
         houses.forEach(h => {
+            const activeSlots = h.slots.filter(s => s.npc.type !== null);
             const finishedSlotsInHouse = h.slots
                 .map((s, i) => ({ ...s, slotIndex: i }))
                 .filter(s => s.pet.finishTime && filterFn(s.pet.finishTime));
             
             if (finishedSlotsInHouse.length > 0) {
+                // Check if house is fully ready (all active slots are finished)
+                const isFullyReady = activeSlots.length > 0 && activeSlots.length === finishedSlotsInHouse.length;
+
                 // Create a batch for this house
                 const subTasks: DailyBriefingTask['subTasks'] = [];
                 const requiredItems: DailyBriefingTask['requiredWarehouseItems'] = [];
@@ -297,7 +302,8 @@ export const generateDailyBriefing = (
                     taskLabel: `Service House #${h.id}`,
                     estFinishTime: new Date(maxFinishTime).toLocaleString([], { hour: '2-digit', minute: '2-digit' }),
                     subTasks,
-                    requiredWarehouseItems: requiredItems
+                    requiredWarehouseItems: requiredItems,
+                    isFullyReady,
                 });
             }
         });
@@ -305,10 +311,29 @@ export const generateDailyBriefing = (
         return batchedTasks;
     };
 
-    const dueTasks = createBatchedTasks((t) => t <= nowTimestamp);
-    const upcomingTasks = createBatchedTasks((t) => t > nowTimestamp && t < nextCheckinTimestamp);
+    const sortTasks = (tasks: DailyBriefingTask[]) => {
+        return tasks.sort((a, b) => {
+            // 1. Completeness (Fully Ready first)
+            if (a.isFullyReady && !b.isFullyReady) return -1;
+            if (!a.isFullyReady && b.isFullyReady) return 1;
 
-    dueTasks.sort((a, b) => a.serviceBlock.localeCompare(b.serviceBlock));
+            const houseA = houses.find(h => h.id === a.houseId);
+            const houseB = houses.find(h => h.id === b.houseId);
+
+            // 2. Division Priority (Nursery > Factory)
+            // Nurseries should be serviced first to provide ingredients for Factories
+            const isNurseryA = houseA?.division === Division.NURSERY;
+            const isNurseryB = houseB?.division === Division.NURSERY;
+            if (isNurseryA && !isNurseryB) return -1;
+            if (!isNurseryA && isNurseryB) return 1;
+
+            // 3. House ID Order
+            return a.houseId - b.houseId;
+        });
+    };
+
+    const dueTasks = sortTasks(createBatchedTasks((t) => t <= nowTimestamp));
+    const upcomingTasks = sortTasks(createBatchedTasks((t) => t > nowTimestamp && t < nextCheckinTimestamp));
 
     return { dueTasks, upcomingTasks, nextCheckin };
 };

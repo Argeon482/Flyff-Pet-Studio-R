@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { House, DailyBriefingTask, CycleTime, WarehouseItem, NpcType, CompletedTaskLog, VirtualHouse } from '../types';
 import { generateDailyBriefing } from '../services/geminiService';
@@ -202,7 +203,9 @@ const TaskTable: React.FC<{
                                         ${isCompleted ? 'bg-gray-700 opacity-50' : 
                                           isHistoryMode ? 'bg-gray-800' :
                                           isPending ? 'opacity-60' : 
-                                          isActive ? 'bg-cyan-900/40' : 'hover:bg-gray-700/50'}`}>
+                                          isActive ? 'bg-cyan-900/40' : 'hover:bg-gray-700/50'}
+                                        ${!task.isFullyReady && !isCompleted && !isHistoryMode ? 'border-l-4 border-yellow-500' : ''}
+                                    `}>
                                         {isInteractive && (
                                             <td className="px-6 py-4 w-16">
                                                 {isHistoryMode ? (
@@ -230,6 +233,11 @@ const TaskTable: React.FC<{
                                             <div className="text-xs text-gray-500 font-normal">
                                                 {(task.subTasks || []).length} Task{(task.subTasks || []).length > 1 ? 's' : ''}
                                             </div>
+                                            {!task.isFullyReady && !isCompleted && !isHistoryMode && (
+                                                <div className="text-[10px] text-yellow-400 font-bold mt-1 uppercase tracking-wider border border-yellow-600 px-1 rounded w-max">
+                                                    Partial Batch
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4">
                                             <BatchTaskVisual task={task} warehouseItems={warehouseItems} />
