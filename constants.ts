@@ -1,3 +1,4 @@
+
 import { House, NpcType, WarehouseItem, CycleTime, PriceConfig, CollectedPet, SaleRecord, Division, AppState, CompletedTaskLog, VirtualHouse } from './types';
 
 export const CYCLE_TIMES: CycleTime[] = [
@@ -13,11 +14,12 @@ export const INITIAL_WAREHOUSE_ITEMS: WarehouseItem[] = [
   // Raw Materials
   { id: 'f-pet-stock', name: 'F-Pet Stock (Purchased)', currentStock: 10, safetyStockLevel: 5, isPurchaseOnly: true },
   // Work-in-Progress Inventory (what is PRODUCED)
-  { id: 'e-pet-wip', name: 'E-Pets (Awaiting E-NPC)', currentStock: 0, safetyStockLevel: 0 },
-  { id: 'd-pet-wip', name: 'D-Pets (Awaiting D-NPC)', currentStock: 0, safetyStockLevel: 0 },
-  { id: 'c-pet-wip', name: 'C-Pets (Awaiting C-NPC)', currentStock: 0, safetyStockLevel: 0 },
-  { id: 'b-pet-wip', name: 'B-Pets (Awaiting B-NPC)', currentStock: 0, safetyStockLevel: 0 },
-  { id: 'a-pet-wip', name: 'A-Pets (Awaiting A-NPC)', currentStock: 0, safetyStockLevel: 0 },
+  { id: 'f-pet-wip', name: 'F-Pets (From Solo F-Slots)', currentStock: 0, safetyStockLevel: 0 },
+  { id: 'e-pet-wip', name: 'E-Pets (Ready for D-NPC)', currentStock: 0, safetyStockLevel: 0 },
+  { id: 'd-pet-wip', name: 'D-Pets (Ready for C-NPC)', currentStock: 0, safetyStockLevel: 0 },
+  { id: 'c-pet-wip', name: 'C-Pets (Ready for B-NPC)', currentStock: 0, safetyStockLevel: 0 },
+  { id: 'b-pet-wip', name: 'B-Pets (Ready for A-NPC)', currentStock: 0, safetyStockLevel: 0 },
+  { id: 'a-pet-wip', name: 'A-Pets (Ready for S-Conversion)', currentStock: 0, safetyStockLevel: 0 },
 ];
 
 export const INITIAL_PRICES: PriceConfig = {

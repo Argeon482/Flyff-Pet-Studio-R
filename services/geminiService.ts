@@ -57,7 +57,6 @@ const calculateProjectedProfit = (
     // 2. Calculate Revenue based on Sinks
     // In a pipeline, throughput is determined by the Cycle Time of the Sink (the last machine),
     // NOT the sum of the whole chain.
-    // Example: D(50) -> C(50) -> B(75). Pipeline outputs one B every 75 hours (plus idle time).
     
     // Map Sink NPC Type -> Produced Pet Type
     const OUTPUT_MAP: Record<string, NpcType> = {
@@ -77,9 +76,9 @@ const calculateProjectedProfit = (
     sinks.forEach(sinkType => {
         const producedType = OUTPUT_MAP[sinkType] || NpcType.S;
         
-        // FIX: Use the actual cycle time of the terminal NPC, not a cumulative chain time.
+        // Use the actual cycle time of the terminal NPC
         const cycleDef = cycleTimes.find(c => c.npcType === sinkType);
-        const cycleTime = cycleDef ? cycleDef.time : 24; // Fallback
+        const cycleTime = cycleDef ? cycleDef.time : 24; 
         
         const throughputPerWeek = (24 * 7) / (cycleTime + avgIdleTime);
 
@@ -134,9 +133,6 @@ const calculateActualWeeklyFinances = (
     houses.forEach(house => {
         house.slots.forEach(slot => {
             // 1. Calculate Revenue
-            // A-NPC -> S-Pet
-            // B-NPC -> A-Pet
-            // Only count if it's finishing this week
             if (slot.pet.finishTime && slot.pet.finishTime > now && slot.pet.finishTime <= endOfWeek) {
                  let producedType: NpcType | null = null;
                  if (slot.npc.type === NpcType.A) producedType = NpcType.S;
@@ -175,7 +171,7 @@ const calculateActualWeeklyFinances = (
 };
 
 
-// RE-IMPLEMENTATION with House Batching Logic
+// RE-IMPLEMENTATION with House Batching Logic and Chain of Custody
 export const generateDailyBriefing = (
     houses: House[], 
     cycleTimes: CycleTime[], 
@@ -203,6 +199,22 @@ export const generateDailyBriefing = (
     const nextCheckinTimestamp = nextCheckin!.getTime();
 
     const npcRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A];
+    const inputMap: Record<string, string> = {
+        [NpcType.F]: 'f-pet-stock',
+        [NpcType.E]: 'f-pet-wip',
+        [NpcType.D]: 'e-pet-wip',
+        [NpcType.C]: 'd-pet-wip',
+        [NpcType.B]: 'c-pet-wip',
+        [NpcType.A]: 'b-pet-wip',
+    };
+    const inputNameMap: Record<string, string> = {
+        [NpcType.F]: 'F-Stock',
+        [NpcType.E]: 'F-Pet',
+        [NpcType.D]: 'E-Pet',
+        [NpcType.C]: 'D-Pet',
+        [NpcType.B]: 'C-Pet',
+        [NpcType.A]: 'B-Pet',
+    };
 
     // Helper to create batched tasks from a list of finished slots
     const createBatchedTasks = (filterFn: (finishTime: number) => boolean): DailyBriefingTask[] => {
@@ -215,10 +227,7 @@ export const generateDailyBriefing = (
                 .filter(s => s.pet.finishTime && filterFn(s.pet.finishTime));
             
             if (finishedSlotsInHouse.length > 0) {
-                // Check if house is fully ready (all active slots are finished)
                 const isFullyReady = activeSlots.length > 0 && activeSlots.length === finishedSlotsInHouse.length;
-
-                // Create a batch for this house
                 const subTasks: DailyBriefingTask['subTasks'] = [];
                 const requiredItems: DailyBriefingTask['requiredWarehouseItems'] = [];
                 let maxFinishTime = 0;
@@ -231,43 +240,54 @@ export const generateDailyBriefing = (
                     
                     if (slot.pet.finishTime! > maxFinishTime) maxFinishTime = slot.pet.finishTime!;
 
-                    // Requirement Check (F-Stock)
-                    if (currentNpcType === NpcType.F) {
-                        const existingReq = requiredItems.find(i => i.itemId === 'f-pet-stock');
-                        if (existingReq) existingReq.count++;
-                        else requiredItems.push({ itemId: 'f-pet-stock', count: 1 });
+                    // 1. INPUT Calculation (Chain of Custody)
+                    // If we are servicing a slot, we generally need to put something back in.
+                    // For Batched tasks, we assume we are filling empty spots created by harvesting.
+                    // If this is the START of a chain (Slot 1/Index 0, or implicitly if previous slot isn't feeding it in this batch),
+                    // we explicitly ask for input. For simplicity in batched view:
+                    // If slotIndex is 0, OR the previous slot (index-1) is NOT part of this house's flow (e.g. different house),
+                    // we ask for input. Since we batch by house, we check if slotIndex 0 is being serviced.
+                    if (slot.slotIndex === 0) {
+                        const itemId = inputMap[currentNpcType];
+                        const itemName = inputNameMap[currentNpcType];
+                        if (itemId) {
+                            const existingReq = requiredItems.find(i => i.itemId === itemId);
+                            if (existingReq) existingReq.count++;
+                            else requiredItems.push({ itemId, count: 1, name: itemName });
+                        }
                     }
 
-                    // SubTask Logic
+                    // 2. ACTION Calculation
                     let actionType: DailyBriefingTask['subTasks'][0]['actionType'] = 'HARVEST_AND_RESTART';
                     let targetHouseId: number | undefined;
                     let targetSlotIndex: number | undefined;
                     let virtualHouseName: string | undefined;
 
-                    // 1. Solo/Flexible/Broken
-                    if (mode === 'SOLO' && !slot.npc.virtualHouseId) {
-                        actionType = 'HARVEST_AND_STORE';
-                    }
-                    // 2. Virtual House
-                    else if (mode === 'SOLO' && slot.npc.virtualHouseId) {
-                        const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
-                        if (vHouse) {
-                            virtualHouseName = vHouse.name;
-                            const currentVIndex = vHouse.slots.findIndex(s => s.houseId === h.id && s.slotIndex === slot.slotIndex);
-                             if (currentVIndex !== -1 && currentVIndex < vHouse.slots.length - 1) {
-                                const nextVSlot = vHouse.slots[currentVIndex + 1];
-                                targetHouseId = nextVSlot.houseId;
-                                targetSlotIndex = nextVSlot.slotIndex;
-                                // Note: If moving to SAME house, it stays HARVEST_AND_RESTART logic implicitly by UI, 
-                                // but structure handles cross-house.
-                             } else {
-                                 actionType = 'COLLECT_S'; // Last link in chain
-                             }
+                    // SOLO / Virtual Logic
+                    if (mode === 'SOLO') {
+                        if (slot.npc.virtualHouseId) {
+                            const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
+                            if (vHouse) {
+                                virtualHouseName = vHouse.name;
+                                const currentVIndex = vHouse.slots.findIndex(s => s.houseId === h.id && s.slotIndex === slot.slotIndex);
+                                if (currentVIndex !== -1 && currentVIndex < vHouse.slots.length - 1) {
+                                    const nextVSlot = vHouse.slots[currentVIndex + 1];
+                                    targetHouseId = nextVSlot.houseId;
+                                    targetSlotIndex = nextVSlot.slotIndex;
+                                    // Logic: Harvest Current, Upgrade to Next, Place in Next Slot
+                                } else {
+                                    // End of Virtual Chain -> Harvest, Upgrade, Store
+                                    actionType = currentRankIndex === npcRankOrder.length - 1 ? 'COLLECT_S' : 'HARVEST_UPGRADE_AND_STORE';
+                                }
+                            } else {
+                                actionType = 'HARVEST_UPGRADE_AND_STORE'; // Broken VH
+                            }
                         } else {
-                            actionType = 'HARVEST_AND_STORE'; // Fallback
+                            // Solo & Unassigned -> Harvest, Upgrade, Store
+                             actionType = currentRankIndex === npcRankOrder.length - 1 ? 'COLLECT_S' : 'HARVEST_UPGRADE_AND_STORE';
                         }
                     }
-                    // 3. Linked (Physical)
+                    // LINKED Logic
                     else {
                         if (currentRankIndex === npcRankOrder.length - 1) {
                              actionType = 'COLLECT_S';
@@ -277,7 +297,8 @@ export const generateDailyBriefing = (
                                 targetHouseId = h.id;
                                 targetSlotIndex = targetSlotIdx;
                             } else {
-                                actionType = 'HARVEST_AND_STORE'; // Broken link
+                                // Broken Link (No next slot found in house) -> Harvest, Upgrade, Store
+                                actionType = 'HARVEST_UPGRADE_AND_STORE'; 
                             }
                         }
                     }
@@ -321,7 +342,6 @@ export const generateDailyBriefing = (
             const houseB = houses.find(h => h.id === b.houseId);
 
             // 2. Division Priority (Nursery > Factory)
-            // Nurseries should be serviced first to provide ingredients for Factories
             const isNurseryA = houseA?.division === Division.NURSERY;
             const isNurseryB = houseB?.division === Division.NURSERY;
             if (isNurseryA && !isNurseryB) return -1;

@@ -83,14 +83,14 @@ export interface DailyBriefingTask {
       slotIndex: number;
       currentNpcType: NpcType;
       nextNpcType: NpcType;
-      actionType: 'HARVEST_AND_RESTART' | 'HARVEST_AND_STORE' | 'COLLECT_S';
+      actionType: 'HARVEST_AND_RESTART' | 'HARVEST_AND_STORE' | 'HARVEST_UPGRADE_AND_STORE' | 'COLLECT_S';
       targetHouseId?: number; // For cross-house moves
       targetSlotIndex?: number;
       virtualHouseName?: string;
   }[];
 
   // Aggregated requirements
-  requiredWarehouseItems: { itemId: string; count: number }[];
+  requiredWarehouseItems: { itemId: string; count: number; name: string }[];
 }
 
 export interface DailyBriefingData {
