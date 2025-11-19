@@ -122,7 +122,6 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
                 <h5 className="font-bold text-cyan-400 mb-1 flex items-center gap-2"><HarvestIcon /> Step 2: House #{task.houseId} Harvest</h5>
                 <ul className="list-disc list-inside">
                     <li>Harvest <strong>ALL</strong> finished pets: {harvestList}.</li>
-                    <li>If any inputs were withdrawn (Step 1), place them now into empty slots.</li>
                 </ul>
              </div>
 
@@ -140,6 +139,9 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
              <div className="p-3 rounded bg-green-900/30 border border-green-600">
                 <h5 className="font-bold text-green-400 mb-1 flex items-center gap-2"><LinkedIcon /> Step 4: Finalize</h5>
                 <ul className="list-disc list-inside space-y-1">
+                    {task.requiredWarehouseItems.map(req => (
+                        <li key={`in-${req.itemId}`}>In House #{task.houseId}: Place <strong>{req.name}</strong> into Slot 1.</li>
+                    ))}
                     {placements.map((p, i) => <li key={i}>{p}.</li>)}
                     {deposits.map((d, i) => {
                          const label = d.actionType === 'HARVEST_UPGRADE_AND_STORE' ? d.nextNpcType : d.currentNpcType;
