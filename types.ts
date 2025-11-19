@@ -1,4 +1,3 @@
-
 export enum NpcType {
   F = 'F',
   E = 'E',

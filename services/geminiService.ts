@@ -1,4 +1,3 @@
-
 import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division, DashboardAnalytics, VirtualHouse } from "../types";
 
 // Calculates the THEORETICAL MAXIMUM throughput of the current layout

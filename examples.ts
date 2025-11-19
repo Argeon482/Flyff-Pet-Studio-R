@@ -1,4 +1,3 @@
-
 import { House, WarehouseItem, CollectedPet, SaleRecord, Division, NpcType } from './types';
 
 const createPet = (npcType: NpcType, hoursAgo: number, totalHours: number) => {

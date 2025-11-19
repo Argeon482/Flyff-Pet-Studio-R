@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { House, CycleTime, PriceConfig, ProjectedProfit } from '../types';
 import { calculateProjectedProfit } from '../services/geminiService';

@@ -1,4 +1,3 @@
-
 import { AppState } from '../types';
 import { INITIAL_APP_STATE } from '../constants';
 

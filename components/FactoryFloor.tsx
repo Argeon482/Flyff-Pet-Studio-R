@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { House, CycleTime, NpcType, Division, HouseTemplate, VirtualHouse } from '../types';
 import { DIVISIONS } from '../constants';

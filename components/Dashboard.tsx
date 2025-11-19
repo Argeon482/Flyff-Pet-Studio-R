@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { House, WarehouseItem, CycleTime, PriceConfig, Division, NpcType, ProjectedProfit, CollectedPet, DashboardAnalytics } from '../types';
 import { generateDashboardAnalytics } from '../services/geminiService';

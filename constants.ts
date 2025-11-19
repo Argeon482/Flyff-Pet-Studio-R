@@ -1,4 +1,3 @@
-
 import { House, NpcType, WarehouseItem, CycleTime, PriceConfig, CollectedPet, SaleRecord, Division, AppState, CompletedTaskLog, VirtualHouse } from './types';
 
 export const CYCLE_TIMES: CycleTime[] = [

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { View } from '../types';
 import { DashboardIcon, BriefingIcon, FactoryIcon, WarehouseIcon, DollarIcon, HelpIcon, SettingsIcon, PlaygroundIcon, SaveIcon } from './icons/Icons';

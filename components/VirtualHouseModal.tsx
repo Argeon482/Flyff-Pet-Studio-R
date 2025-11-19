@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { House, VirtualHouse, NpcType } from '../types';
 import { VirtualIcon } from './icons/Icons';
