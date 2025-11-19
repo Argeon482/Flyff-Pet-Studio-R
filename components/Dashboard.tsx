@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { House, WarehouseItem, CycleTime, PriceConfig, Division, NpcType, ProjectedProfit, CollectedPet, DashboardAnalytics } from '../types';
+import { House, WarehouseItem, CycleTime, PriceConfig, Division, NpcType, ProjectedProfit, CollectedPet, DashboardAnalytics, VirtualHouse } from '../types';
 import { generateDashboardAnalytics } from '../services/geminiService';
 import { AlertIcon, ChampionIcon, ClockIcon, WarehouseIcon } from './icons/Icons';
 
@@ -13,6 +13,7 @@ interface DashboardProps {
   checkinTimes: number[];
   collectedPets: CollectedPet[];
   onPerfectionAttempt: () => void;
+  virtualHouses: VirtualHouse[];
 }
 
 const EditableCashBalance: React.FC<{ balance: number; onSave: (newBalance: number) => void }> = ({ balance, onSave }) => {
@@ -64,7 +65,7 @@ const EditableCashBalance: React.FC<{ balance: number; onSave: (newBalance: numb
 };
 
 const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit, title: string, subTitle: string }> = ({ profitData, title, subTitle }) => {
-    const { grossRevenue, grossRevenueAlternativeA, npcExpenses, perfectionExpenses, netProfit, sPetsCount } = profitData;
+    const { grossRevenue, grossRevenueAlternativeA, npcExpenses, perfectionExpenses, netProfit, producedItems } = profitData;
     
     const formatCurrency = (value: number) => `$${Math.round(value).toLocaleString()}`;
 
@@ -76,8 +77,13 @@ const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit, title: string, su
             </div>
             
             <div className="space-y-1 text-[11px] sm:text-sm flex-grow">
-                <div className="flex justify-between">
-                    <span className="text-gray-400">Rev ({Math.round(sPetsCount)} S)</span>
+                <div className="flex justify-between items-start">
+                    <div className="text-gray-400 flex flex-col">
+                        <span>Gross Rev</span>
+                        {producedItems && producedItems.map((item, i) => (
+                             <span key={i} className="text-[9px] sm:text-[10px] pl-1 text-gray-500">↳ {Math.round(item.count * 10) / 10} {item.name}</span>
+                        ))}
+                    </div>
                     <span className="font-semibold text-green-400">{formatCurrency(grossRevenue)}</span>
                 </div>
                 {grossRevenueAlternativeA !== undefined && (
@@ -110,14 +116,14 @@ const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit, title: string, su
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     houses, warehouseItems, cashBalance, setCashBalance, 
-    cycleTimes, prices, checkinTimes, collectedPets, onPerfectionAttempt 
+    cycleTimes, prices, checkinTimes, collectedPets, onPerfectionAttempt, virtualHouses
 }) => {
     const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
 
     useEffect(() => {
-        const data = generateDashboardAnalytics(houses, warehouseItems, cycleTimes, prices, checkinTimes);
+        const data = generateDashboardAnalytics(houses, warehouseItems, cycleTimes, prices, checkinTimes, virtualHouses);
         setAnalytics(data);
-    }, [houses, warehouseItems, cycleTimes, prices, checkinTimes]);
+    }, [houses, warehouseItems, cycleTimes, prices, checkinTimes, virtualHouses]);
 
     const champion = houses.find(h => h.division === Division.CHAMPION); 
     const availableSPets = collectedPets.find(p => p.petType === NpcType.S)?.quantity || 0;

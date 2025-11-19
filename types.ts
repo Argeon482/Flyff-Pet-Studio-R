@@ -130,6 +130,7 @@ export interface ProjectedProfit {
     perfectionExpenses: number;
     netProfit: number;
     sPetsCount: number;
+    producedItems?: { name: string; count: number }[];
 }
 
 export interface DashboardAnalytics {

@@ -371,6 +371,7 @@ const App: React.FC = () => {
             houses={houses} warehouseItems={warehouseItems} cashBalance={cashBalance}
             setCashBalance={setCashBalance} cycleTimes={CYCLE_TIMES} prices={prices}
             checkinTimes={checkinTimes} collectedPets={collectedPets} onPerfectionAttempt={handlePerfectionAttempt}
+            virtualHouses={virtualHouses}
         />;
       case View.DAILY_BRIEFING:
         return <DailyBriefing 

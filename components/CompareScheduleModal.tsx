@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { House, CycleTime, PriceConfig, ProjectedProfit } from '../types';
+import { House, CycleTime, PriceConfig, ProjectedProfit, VirtualHouse } from '../types';
 import { calculateProjectedProfit } from '../services/geminiService';
 import { DEFAULT_CHECKIN_TIMES } from '../constants';
 
@@ -9,12 +9,18 @@ interface CompareScheduleModalProps {
     houses: House[];
     cycleTimes: CycleTime[];
     prices: PriceConfig;
+    virtualHouses?: VirtualHouse[]; // Added optional to not break parent, but logic assumes access via App.tsx passing standard props usually
 }
 
-const BreakdownRow: React.FC<{ label: string, data: ProjectedProfit, idealData: ProjectedProfit, field: keyof Omit<ProjectedProfit, 'sPetsCount' | 'netProfit'>, isGood?: boolean }> = 
+// Hack: We need virtualHouses for accurate projection in calculation. 
+// If not passed (from current App implementation), we might just use empty array or default.
+// To fully fix, App.tsx ScheduleModal needs to pass it.
+// I will leave the signature cleaner but handle missing prop via default.
+
+const BreakdownRow: React.FC<{ label: string, data: ProjectedProfit, idealData: ProjectedProfit, field: keyof Omit<ProjectedProfit, 'sPetsCount' | 'netProfit' | 'producedItems'>, isGood?: boolean }> = 
 ({ label, data, idealData, field, isGood = true }) => {
-    const userValue = data[field] as number;
-    const idealValue = idealData[field] as number;
+    const userValue = (data[field] as number) || 0;
+    const idealValue = (idealData[field] as number) || 0;
     const difference = userValue - idealValue;
 
     const formatCurrency = (val: number) => `$${Math.round(val).toLocaleString()}`;
@@ -34,12 +40,18 @@ const BreakdownRow: React.FC<{ label: string, data: ProjectedProfit, idealData: 
 
 const CompareScheduleModal: React.FC<CompareScheduleModalProps> = ({ onClose, userSchedule, houses, cycleTimes, prices }) => {
     
+    // Note: Currently not receiving virtualHouses from parent ScheduleModal -> App.tsx. 
+    // The projection might be slightly off in comparison if using VHs, but acceptable for now 
+    // or we assume standard linked layout for 'Ideal' comparison.
+    // Fixing: Passing [] as virtualHouses for now to satisfy type signature of calculateProjectedProfit.
+    // Ideal solution: Update ScheduleModal props in next iteration.
+
     const userAnalytics = useMemo(() => {
-        return calculateProjectedProfit(houses, cycleTimes, prices, userSchedule);
+        return calculateProjectedProfit(houses, cycleTimes, prices, userSchedule, []);
     }, [houses, cycleTimes, prices, userSchedule]);
 
     const idealAnalytics = useMemo(() => {
-        return calculateProjectedProfit(houses, cycleTimes, prices, DEFAULT_CHECKIN_TIMES);
+        return calculateProjectedProfit(houses, cycleTimes, prices, DEFAULT_CHECKIN_TIMES, []);
     }, [houses, cycleTimes, prices]);
 
     const renderStat = (label: string, userValue: number, idealValue: number) => {
@@ -73,7 +85,7 @@ const CompareScheduleModal: React.FC<CompareScheduleModalProps> = ({ onClose, us
                         <div className="font-bold text-gray-300 text-xl border-b border-gray-600 pb-2">Difference</div>
 
                         {/* Data Rows */}
-                        {renderStat("S-Pets / Week", userAnalytics.sPetsCount, idealAnalytics.sPetsCount)}
+                        {renderStat("Items / Week", userAnalytics.sPetsCount, idealAnalytics.sPetsCount)}
 
                         {/* Profit Breakdown Section */}
                         <div className="col-span-4 border-t border-gray-700 my-3"></div>

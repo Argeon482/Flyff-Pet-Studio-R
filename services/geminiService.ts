@@ -1,48 +1,136 @@
 import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division, DashboardAnalytics, VirtualHouse } from "../types";
 
-// Calculates the THEORETICAL MAXIMUM throughput of the current layout
+// Calculates the THEORETICAL MAXIMUM throughput of the current layout using Sink Detection
 const calculateProjectedProfit = (
     houses: House[],
     cycleTimes: CycleTime[],
     prices: PriceConfig,
-    checkinTimes: number[]
+    checkinTimes: number[],
+    virtualHouses: VirtualHouse[]
 ): ProjectedProfit => {
-    const activeSlots = houses.flatMap(h => h.slots).filter(s => s.npc.type && s.npc.duration);
-    if (activeSlots.length === 0 || checkinTimes.length === 0) {
-        return { grossRevenue: 0, grossRevenueAlternativeA: 0, npcExpenses: 0, perfectionExpenses: 0, netProfit: 0, sPetsCount: 0 };
+    const checkinCount = checkinTimes.length;
+    if (checkinCount === 0) {
+        return { grossRevenue: 0, grossRevenueAlternativeA: 0, npcExpenses: 0, perfectionExpenses: 0, netProfit: 0, sPetsCount: 0, producedItems: [] };
     }
 
-    const fullCycleTimeHours = cycleTimes.reduce((sum, ct) => sum + ct.time, 0);
-    const finalPetPrice = prices.petPrices[NpcType.S] || 0;
-    const aPetPrice = prices.petPrices[NpcType.A] || 0;
+    const avgHoursBetweenCheckins = 24 / checkinCount;
+    const avgIdleTime = avgHoursBetweenCheckins / 2;
 
-    const numCheckins = checkinTimes.length;
-    const avgHoursBetweenCheckins = 24 / numCheckins;
-    const avgIdleTimeHours = avgHoursBetweenCheckins / 2;
-    const totalEffectiveCycleTime = fullCycleTimeHours + avgIdleTimeHours;
+    // 1. Identify Sinks (Terminal Nodes) in the factory graph
+    // A Sink is a slot where a pet finishes and is NOT moved to another slot automatically.
+    const sinks: NpcType[] = [];
 
-    const pipelinesPerSlotPerWeek = (7 * 24) / totalEffectiveCycleTime;
-    const sPetsCount = activeSlots.length * pipelinesPerSlotPerWeek;
-    
-    const grossRevenue = sPetsCount * finalPetPrice;
-    const grossRevenueAlternativeA = sPetsCount * aPetPrice;
+    houses.forEach(h => {
+        h.slots.forEach((slot, i) => {
+            if (!slot.npc.type) return;
 
-    let npcExpenses = 0;
-    activeSlots.forEach(slot => {
-        const duration = slot.npc.duration;
-        const cost = duration === 7 ? prices.npcCost7Day : prices.npcCost15Day;
-        if (duration && cost > 0) {
-            const weeklyCostForSlot = (cost / duration) * 7;
-            npcExpenses += weeklyCostForSlot;
-        }
+            let isSink = false;
+
+            if (slot.npc.mode === 'LINKED') {
+                // Linked: It's a sink if it's the last slot OR the next slot is empty
+                if (i === 2) isSink = true;
+                else if (!h.slots[i + 1].npc.type) isSink = true;
+            } else if (slot.npc.mode === 'SOLO') {
+                if (!slot.npc.virtualHouseId) {
+                    // Solo & Unassigned: It's a sink (Harvest to Warehouse)
+                    isSink = true;
+                } else {
+                    // Solo & Virtual: It's a sink if it's the last slot in the Virtual Chain
+                    const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
+                    if (vHouse) {
+                        const vIndex = vHouse.slots.findIndex(s => s.houseId === h.id && s.slotIndex === i);
+                        if (vIndex === vHouse.slots.length - 1) isSink = true;
+                    } else {
+                        // Fallback if VH missing
+                        isSink = true;
+                    }
+                }
+            }
+
+            if (isSink) {
+                sinks.push(slot.npc.type);
+            }
+        });
     });
+
+    // 2. Calculate Revenue based on Sinks
+    // We assume standard chains leading to these sinks to estimate cycle time.
+    // Chain Times (Approximate sum of cycles ending at X):
+    // A-NPC Sink (produces S) -> F->A chain = ~455h
+    // B-NPC Sink (produces A) -> D->B chain = ~175h
+    // D-NPC Sink (produces C) -> F->D chain = ~80h
+    const CHAIN_TIMES: Record<string, number> = {
+        [NpcType.A]: 455, 
+        [NpcType.B]: 175, 
+        [NpcType.C]: 100, 
+        [NpcType.D]: 80, 
+        [NpcType.E]: 30, 
+        [NpcType.F]: 10, 
+    };
+
+    // Map Sink NPC Type -> Produced Pet Type
+    const OUTPUT_MAP: Record<string, NpcType> = {
+        [NpcType.A]: NpcType.S,
+        [NpcType.B]: NpcType.A,
+        [NpcType.C]: NpcType.B,
+        [NpcType.D]: NpcType.C,
+        [NpcType.E]: NpcType.D,
+        [NpcType.F]: NpcType.E, // Or just F-Pet if raw? Usually produces E starter
+    };
     
+    const npcRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A, NpcType.S];
+
+    let grossRevenue = 0;
+    let grossRevenueAlternativeA = 0;
+    let sPetsCount = 0; // We'll use this for total items count generally
+    const producedItemsMap: Record<string, number> = {};
+
+    sinks.forEach(sinkType => {
+        const producedType = OUTPUT_MAP[sinkType] || NpcType.S;
+        // If sink is A, produced is S.
+        // If sink is B, produced is A.
+        
+        const cycleTime = CHAIN_TIMES[sinkType] || 100; 
+        const throughputPerWeek = (24 * 7) / (cycleTime + avgIdleTime);
+
+        const price = prices.petPrices[producedType] || 0;
+        grossRevenue += throughputPerWeek * price;
+
+        // Alternative A Calculation:
+        // If we produce S (from A-Sink), what if we sold A inputs?
+        // Actually, if we produce S, the "Alternative" is usually "What if I stopped at A and sold it?"
+        // If we produce A (from B-Sink), that IS the revenue.
+        if (producedType === NpcType.S) {
+            const aPrice = prices.petPrices[NpcType.A] || 0;
+            grossRevenueAlternativeA += throughputPerWeek * aPrice;
+            sPetsCount += throughputPerWeek;
+        } else {
+            // If we aren't producing S pets, Alternative A doesn't make sense as a "downgrade",
+            // but we can track it. For dashboard simplicity, just track revenue.
+            // If we produce A pets directly, add to main revenue.
+        }
+
+        const label = `${producedType}-Pets`;
+        producedItemsMap[label] = (producedItemsMap[label] || 0) + throughputPerWeek;
+    });
+
+    // 3. Calculate Expenses (All Active Slots)
+    let npcExpenses = 0;
+    houses.forEach(h => h.slots.forEach(s => {
+        if (s.npc.type && s.npc.duration) {
+            const cost = s.npc.duration === 7 ? prices.npcCost7Day : prices.npcCost15Day;
+            npcExpenses += (cost / s.npc.duration) * 7;
+        }
+    }));
+
     const hasChampionHouse = houses.some(h => h.division === Division.CHAMPION);
-    const perfectionExpenses = hasChampionHouse ? grossRevenue : 0;
+    const perfectionExpenses = hasChampionHouse ? (sPetsCount * (prices.petPrices[NpcType.S] || 0)) : 0; // Rough estimate: consuming 1 S-Pet per S-Pet produced if perfecting
 
     const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
 
-    return { grossRevenue, grossRevenueAlternativeA, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
+    const producedItems = Object.entries(producedItemsMap).map(([name, count]) => ({ name, count }));
+
+    return { grossRevenue, grossRevenueAlternativeA: grossRevenueAlternativeA || undefined, npcExpenses, perfectionExpenses, netProfit, sPetsCount, producedItems };
 };
 
 // Calculates the ACTUAL expected cash flow for the next 7 days based on current timers
@@ -59,19 +147,34 @@ const calculateActualWeeklyFinances = (
     let grossRevenueAlternativeA = 0;
     let npcExpenses = 0;
     let sPetsCount = 0;
+    const producedItemsMap: Record<string, number> = {};
 
     houses.forEach(house => {
         house.slots.forEach(slot => {
-            // 1. Calculate Revenue: Only 'A' NPCs produce an 'S' pet for sale
-            if (slot.npc.type === NpcType.A && slot.pet.finishTime) {
-                if (slot.pet.finishTime > now && slot.pet.finishTime <= endOfWeek) {
-                    grossRevenue += (prices.petPrices[NpcType.S] || 0);
-                    grossRevenueAlternativeA += (prices.petPrices[NpcType.A] || 0);
-                    sPetsCount++;
-                }
+            // 1. Calculate Revenue
+            // A-NPC -> S-Pet
+            // B-NPC -> A-Pet
+            // Only count if it's finishing this week
+            if (slot.pet.finishTime && slot.pet.finishTime > now && slot.pet.finishTime <= endOfWeek) {
+                 let producedType: NpcType | null = null;
+                 if (slot.npc.type === NpcType.A) producedType = NpcType.S;
+                 else if (slot.npc.type === NpcType.B) producedType = NpcType.A;
+
+                 if (producedType) {
+                     const price = prices.petPrices[producedType] || 0;
+                     grossRevenue += price;
+                     
+                     const label = `${producedType}-Pets`;
+                     producedItemsMap[label] = (producedItemsMap[label] || 0) + 1;
+
+                     if (producedType === NpcType.S) {
+                         sPetsCount++;
+                         grossRevenueAlternativeA += (prices.petPrices[NpcType.A] || 0);
+                     }
+                 }
             }
 
-            // 2. Calculate Expenses: NPC Expirations occurring in the next 7 days
+            // 2. Calculate Expenses
             if (slot.npc.expiration) {
                 const expirationTime = new Date(slot.npc.expiration).getTime();
                 if (expirationTime > now && expirationTime <= endOfWeek) {
@@ -84,8 +187,9 @@ const calculateActualWeeklyFinances = (
 
     const perfectionExpenses = 0; 
     const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
+    const producedItems = Object.entries(producedItemsMap).map(([name, count]) => ({ name, count }));
 
-    return { grossRevenue, grossRevenueAlternativeA, npcExpenses, perfectionExpenses, netProfit, sPetsCount };
+    return { grossRevenue, grossRevenueAlternativeA, npcExpenses, perfectionExpenses, netProfit, sPetsCount, producedItems };
 };
 
 
@@ -203,9 +307,6 @@ export const generateDailyBriefing = (
                     });
                 });
 
-                // Sort subtasks: Harvest higher ranks first (reverse order) to free up space? 
-                // Or Harvest F first? The user said: "Collect all, Upgrade all, Place all".
-                // Sorting by slot index is usually fine for display.
                 subTasks.sort((a, b) => a.slotIndex - b.slotIndex);
 
                 batchedTasks.push({
@@ -226,7 +327,6 @@ export const generateDailyBriefing = (
     const dueTasks = createBatchedTasks((t) => t <= nowTimestamp);
     const upcomingTasks = createBatchedTasks((t) => t > nowTimestamp && t < nextCheckinTimestamp);
 
-    // Sort batches by service block priority (A, B, C) or number of tasks
     dueTasks.sort((a, b) => a.serviceBlock.localeCompare(b.serviceBlock));
 
     return { dueTasks, upcomingTasks, nextCheckin };
@@ -238,7 +338,8 @@ export const generateDashboardAnalytics = (
     warehouseItems: WarehouseItem[],
     cycleTimes: CycleTime[],
     prices: PriceConfig,
-    checkinTimes: number[]
+    checkinTimes: number[],
+    virtualHouses: VirtualHouse[]
 ): DashboardAnalytics => {
     const alerts: string[] = [];
     const now = new Date();
@@ -285,7 +386,7 @@ export const generateDashboardAnalytics = (
         nextAction = `UP NEXT: ${nextServiceBlock} at ${timeString}`;
     }
 
-    const theoreticalMaxWeekly = calculateProjectedProfit(houses, cycleTimes, prices, checkinTimes);
+    const theoreticalMaxWeekly = calculateProjectedProfit(houses, cycleTimes, prices, checkinTimes, virtualHouses);
     const actualNext7Days = calculateActualWeeklyFinances(houses, prices, now.getTime());
 
     return { alerts, nextAction, theoreticalMaxWeekly, actualNext7Days };
