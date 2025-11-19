@@ -201,19 +201,19 @@ export const generateDailyBriefing = (
     const npcRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A];
     const inputMap: Record<string, string> = {
         [NpcType.F]: 'f-pet-stock',
-        [NpcType.E]: 'f-pet-wip',
-        [NpcType.D]: 'e-pet-wip',
-        [NpcType.C]: 'd-pet-wip',
-        [NpcType.B]: 'c-pet-wip',
-        [NpcType.A]: 'b-pet-wip',
+        [NpcType.E]: 'e-pet-wip',
+        [NpcType.D]: 'd-pet-wip',
+        [NpcType.C]: 'c-pet-wip',
+        [NpcType.B]: 'b-pet-wip',
+        [NpcType.A]: 'a-pet-wip',
     };
     const inputNameMap: Record<string, string> = {
         [NpcType.F]: 'F-Stock',
-        [NpcType.E]: 'F-Pet',
-        [NpcType.D]: 'E-Pet',
-        [NpcType.C]: 'D-Pet',
-        [NpcType.B]: 'C-Pet',
-        [NpcType.A]: 'B-Pet',
+        [NpcType.E]: 'E-Pet',
+        [NpcType.D]: 'D-Pet',
+        [NpcType.C]: 'C-Pet',
+        [NpcType.B]: 'B-Pet',
+        [NpcType.A]: 'A-Pet',
     };
 
     // Helper to create batched tasks from a list of finished slots
@@ -244,9 +244,7 @@ export const generateDailyBriefing = (
                     // If we are servicing a slot, we generally need to put something back in.
                     // For Batched tasks, we assume we are filling empty spots created by harvesting.
                     // If this is the START of a chain (Slot 1/Index 0, or implicitly if previous slot isn't feeding it in this batch),
-                    // we explicitly ask for input. For simplicity in batched view:
-                    // If slotIndex is 0, OR the previous slot (index-1) is NOT part of this house's flow (e.g. different house),
-                    // we ask for input. Since we batch by house, we check if slotIndex 0 is being serviced.
+                    // we explicitly ask for input. Since we batch by house, we check if slotIndex 0 is being serviced.
                     if (slot.slotIndex === 0) {
                         const itemId = inputMap[currentNpcType];
                         const itemName = inputNameMap[currentNpcType];
