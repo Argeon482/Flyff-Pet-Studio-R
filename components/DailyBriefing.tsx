@@ -41,7 +41,7 @@ const BatchTaskVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
     let hasRenewals = false;
     (task.subTasks || []).forEach(st => {
         if (st.actionType === 'RENEW_NPC') hasRenewals = true;
-        else counts[st.currentNpcType] = (counts[st.currentNpcType] || 0) + 1;
+        else if (st.actionType !== 'FILL_IDLE') counts[st.currentNpcType] = (counts[st.currentNpcType] || 0) + 1;
     });
 
     return (
@@ -85,12 +85,12 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
     const renewals = subTasks.filter(st => st.actionType === 'RENEW_NPC');
     
     const harvestList = subTasks
-        .filter(st => st.actionType !== 'RENEW_NPC')
+        .filter(st => st.actionType !== 'RENEW_NPC' && st.actionType !== 'FILL_IDLE')
         .map(st => st.currentNpcType)
         .join(', ');
     
     const upgradeList = subTasks
-        .filter(st => st.actionType !== 'HARVEST_AND_STORE' && st.actionType !== 'RENEW_NPC' && st.actionType !== 'COLLECT_S')
+        .filter(st => st.actionType !== 'HARVEST_AND_STORE' && st.actionType !== 'RENEW_NPC' && st.actionType !== 'COLLECT_S' && st.actionType !== 'FILL_IDLE')
         .map(st => `${st.currentNpcType}→${st.nextNpcType}`)
         .join(', ');
     
@@ -114,11 +114,16 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
     // 3. Warehouse deposits
     const deposits = subTasks.filter(st => st.actionType === 'HARVEST_AND_STORE' || st.actionType === 'HARVEST_UPGRADE_AND_STORE');
     
-    // 4. Smart Refills & Removals
+    // 4. Smart Refills & Removals & FILL_IDLE
     const npcRemovals: string[] = [];
     const manualRefills: string[] = [];
 
     subTasks.forEach(st => {
+        if (st.actionType === 'FILL_IDLE') {
+             manualRefills.push(`In House #${task.houseId}: Withdraw <strong>${st.currentNpcType}-Pet</strong> & Place into Slot ${st.slotIndex + 1}`);
+             return;
+        }
+
         // Detect if the source slot becomes empty after this action
         const isSourceEmptying = 
             st.actionType === 'HARVEST_AND_STORE' || 
@@ -353,7 +358,8 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
 
   const calculateBriefing = useCallback(() => {
     const now = simulatedTime || Date.now();
-    const { dueTasks, upcomingTasks, nextCheckin } = generateDailyBriefing(houses, cycleTimes, checkinTimes, virtualHouses, now);
+    // Pass warehouseItems here
+    const { dueTasks, upcomingTasks, nextCheckin } = generateDailyBriefing(houses, cycleTimes, checkinTimes, virtualHouses, warehouseItems, now);
     
     setDueTasks(dueTasks);
     setUpcomingTasks(upcomingTasks);
@@ -387,7 +393,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
         setRecentHistoryTasks([]);
     }
 
-  }, [houses, cycleTimes, checkinTimes, simulatedTime, completedTaskLog, setCompletedTaskLog, virtualHouses]);
+  }, [houses, cycleTimes, checkinTimes, simulatedTime, completedTaskLog, setCompletedTaskLog, virtualHouses, warehouseItems]); // Added warehouseItems dependency
 
   useEffect(() => {
     calculateBriefing();
@@ -481,6 +487,16 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
              }
 
              // Renewals don't generate moves
+        } else if (st.actionType === 'FILL_IDLE') {
+            // Do nothing during harvest phase for FILL_IDLE, just mark intent
+            pendingMoves.push({
+                type: st.currentNpcType,
+                nextType: st.currentNpcType, // Same type
+                targetHouseId: task.houseId,
+                targetSlotIndex: st.slotIndex,
+                action: st.actionType,
+                sourceSlotIndex: st.slotIndex
+            });
         } else {
             // Harvest Logic
             sourceSlot.pet = { name: null, startTime: null, finishTime: null }; 
@@ -523,13 +539,26 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
                 if (item) item.currentStock++;
              }
          } 
-         else if (move.action === 'HARVEST_AND_RESTART') {
+         else if (move.action === 'HARVEST_AND_RESTART' || move.action === 'FILL_IDLE') {
              const targetHId = move.targetHouseId || task.houseId;
              const targetSIdx = move.targetSlotIndex !== undefined ? move.targetSlotIndex : move.sourceSlotIndex;
              
              const targetHouse = newHouses.find((h: House) => h.id === targetHId);
              if (targetHouse) {
                  const targetSlot = targetHouse.slots[targetSIdx];
+                 // For FILL_IDLE, we consume stock here if not already in reqs (FILL_IDLE logic might be split)
+                 // Current implementation for FILL_IDLE in execute uses generic flow.
+                 // Let's handle consumption for FILL_IDLE here:
+                 if (move.action === 'FILL_IDLE') {
+                      const inputId = getInputId(move.type);
+                      const stockItem = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
+                      if (stockItem && stockItem.currentStock > 0) {
+                          stockItem.currentStock--;
+                      } else {
+                          return; // Skip if no stock
+                      }
+                 }
+
                  const cycle = cycleTimes.find(c => c.npcType === move.nextType);
                  if (cycle) {
                      const startTime = now;
@@ -545,10 +574,19 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
     });
 
     // -------------------------------------------------------
-    // PHASE 3: SMART REFILL (Fill empty slots)
+    // PHASE 3: SMART REFILL (Fill empty slots that are NOT receiving a move)
     // -------------------------------------------------------
     subTasks.forEach(st => {
-         if (st.actionType === 'RENEW_NPC') return; // Don't refill renewals
+         if (st.actionType === 'RENEW_NPC' || st.actionType === 'FILL_IDLE') return; 
+
+         // Check if this slot is receiving a pet from an internal move
+         const isReceivingMove = pendingMoves.some(m => 
+            m.action === 'HARVEST_AND_RESTART' && 
+            (m.targetHouseId === task.houseId || !m.targetHouseId) &&
+            m.targetSlotIndex === st.slotIndex
+         );
+
+         if (isReceivingMove) return; // Slot is covered, do not refill
 
          const house = newHouses.find((h: House) => h.id === task.houseId);
          const slot = house.slots[st.slotIndex];
@@ -611,10 +649,13 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
         if (item) item.currentStock += req.count;
       });
       
-      // 2. Reverse Outputs & Refills
+      // 2. Reverse Outputs & Refills & FILL_IDLE
+      // Need to check what actually happened. For simplicity, we trust the log timestamp logic for "Smart Refills"
+      // and explicit actions for others.
+      
       subTasks.forEach(st => {
           if (st.actionType === 'RENEW_NPC') {
-              // State restore is handled by snapshot below, no inventory to refund
+              // State restore is handled by snapshot below
           } else if (st.actionType === 'COLLECT_S') {
               onUpdateCollectedPets(NpcType.S, -1);
           } else if (st.actionType === 'HARVEST_AND_STORE' || st.actionType === 'HARVEST_UPGRADE_AND_STORE') {
@@ -632,18 +673,54 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
                 }
           }
           
-          // Refund Smart Refills
+          // Reverse FILL_IDLE and Smart Refills
+          // We identify these by checking if a pet was started in the slot at logEntry.timestamp
           const house = houses.find(h => h.id === task.houseId);
           const slot = house?.slots[st.slotIndex];
-          if (slot && slot.pet.startTime && Math.abs(slot.pet.startTime - logEntry.timestamp) < 5000) {
+          
+          // Logic: If we consumed a stock item for FILL_IDLE or Smart Refill, give it back
+          // For FILL_IDLE, it's explicit.
+          if (st.actionType === 'FILL_IDLE') {
                const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
                const inputId = inputMap[st.currentNpcType];
                const item = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
                if (item) item.currentStock++;
+          } else {
+              // Smart Refill check (heuristic: pet start time matches log time)
+              if (slot && slot.pet.startTime && Math.abs(slot.pet.startTime - logEntry.timestamp) < 5000) {
+                   // Only refund if it wasn't a transfer from another slot (which uses no stock)
+                   // But wait, standard moves also set startTime.
+                   // Correct undo is hard without granular logs. 
+                   // Simplified: Restore slots from snapshot (handles the Pet object).
+                   // We ONLY need to fix the Warehouse numbers.
+                   
+                   // Did this slot consume stock?
+                   // Only if it was empty and refilled.
+                   // We can check if the snapshot had no pet, but current state has pet.
+                   // Snapshots are taken BEFORE changes.
+                   
+                   const snap = logEntry.affectedSlots?.find(s => s.houseId === task.houseId && s.slotIndex === st.slotIndex);
+                   if (snap && !snap.previousPet.startTime && slot.pet.startTime) {
+                       // It was filled. Was it filled from stock?
+                       // If it wasn't a target of a HARVEST_AND_RESTART move, then yes.
+                       const wasTargetOfMove = subTasks.some(ot => 
+                           ot.actionType === 'HARVEST_AND_RESTART' && 
+                           (ot.targetHouseId === task.houseId || !ot.targetHouseId) &&
+                           ot.targetSlotIndex === st.slotIndex
+                       );
+                       
+                       if (!wasTargetOfMove) {
+                           const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
+                           const inputId = inputMap[st.currentNpcType];
+                           const item = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
+                           if (item) item.currentStock++;
+                       }
+                   }
+              }
           }
       });
 
-      // 3. Restore Source Slots from Snapshot
+      // 3. Restore Source Slots from Snapshot (This reverts Pet timers, NPC status)
       if (logEntry.affectedSlots) {
           logEntry.affectedSlots.forEach(snap => {
               const house = newHouses.find((h: House) => h.id === snap.houseId);
