@@ -76,7 +76,7 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
     // Group placements by location
     const placements: string[] = [];
     
-    // 1. Place items back in current house
+    // 1. Place items back in current house (Output of Upgrade)
     const currentHousePlacements = subTasks.filter(st => 
         st.actionType === 'HARVEST_AND_RESTART' && (st.targetHouseId === task.houseId || !st.targetHouseId)
     );
@@ -90,14 +90,22 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
         placements.push(`Go to House #${ch.targetHouseId}: Place ${ch.nextNpcType} (Slot ${(ch.targetSlotIndex || 0) + 1})`);
     });
 
-    // 3. Warehouse deposits & Smart Refills
+    // 3. Warehouse deposits
     const deposits = subTasks.filter(st => st.actionType === 'HARVEST_AND_STORE' || st.actionType === 'HARVEST_UPGRADE_AND_STORE');
+    
+    // 4. Smart Refills & Removals
     const npcRemovals: string[] = [];
     const manualRefills: string[] = [];
 
     subTasks.forEach(st => {
-        // If action results in empty slot
-        if (st.actionType === 'HARVEST_AND_STORE' || st.actionType === 'COLLECT_S' || st.actionType === 'HARVEST_UPGRADE_AND_STORE') {
+        // Detect if the source slot becomes empty after this action
+        const isSlotEmptying = 
+            st.actionType === 'HARVEST_AND_STORE' || 
+            st.actionType === 'COLLECT_S' || 
+            st.actionType === 'HARVEST_UPGRADE_AND_STORE' ||
+            (st.actionType === 'HARVEST_AND_RESTART' && (st.targetHouseId !== task.houseId || st.targetSlotIndex !== st.slotIndex));
+
+        if (isSlotEmptying) {
             // Check if we have the input stock to REFILL this slot immediately
              const inputMap: Record<string, string> = {
                 [NpcType.F]: 'f-pet-stock',
@@ -171,9 +179,6 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
              <div className="p-3 rounded bg-green-900/30 border border-green-600">
                 <h5 className="font-bold text-green-400 mb-1 flex items-center gap-2"><LinkedIcon /> Step 4: Finalize</h5>
                 <ul className="list-disc list-inside space-y-1">
-                    {task.requiredWarehouseItems.map(req => (
-                        <li key={`in-${req.itemId}`}>In House #{task.houseId}: Place <strong>{req.name}</strong> into Slot 1.</li>
-                    ))}
                     {manualRefills.map((r, i) => <li key={`refill-${i}`} dangerouslySetInnerHTML={{__html: r}} />)}
                     {placements.map((p, i) => <li key={i}>{p}.</li>)}
                     {deposits.map((d, i) => {
@@ -395,13 +400,18 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
 
         sourceSlot.pet = { name: null, startTime: null, finishTime: null };
         
+        // Helper to determine input item for a slot type
+        const getInputId = (npcType: NpcType) => {
+             const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
+             return inputMap[npcType];
+        };
+
         // Handle Outputs
         if (st.actionType === 'COLLECT_S') {
              onUpdateCollectedPets(NpcType.S, 1);
              
              // SMART REFILL or PAUSE Logic
-             const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
-             const inputId = inputMap[st.currentNpcType];
+             const inputId = getInputId(st.currentNpcType);
              const stockItem = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
              
              if (stockItem && stockItem.currentStock > 0) {
@@ -449,8 +459,7 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
             }
 
             // SMART REFILL or PAUSE Logic
-             const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
-             const inputId = inputMap[st.currentNpcType];
+             const inputId = getInputId(st.currentNpcType);
              const stockItem = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
              
              if (stockItem && stockItem.currentStock > 0) {
@@ -511,14 +520,10 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
                 }
              }
              
-             // Note: If source != target, source is now empty. 
-             // Should we apply SMART REFILL logic here too for the SOURCE slot?
-             // Usually 'HARVEST_AND_RESTART' means moving pet FROM source TO target.
-             // So source becomes empty.
+             // Source Logic: If source is different from target (moving pet), source becomes empty.
+             // Check Smart Refill for SOURCE slot.
              if (targetHId !== task.houseId || targetSIdx !== st.slotIndex) {
-                  // Source is empty. Check refill.
-                  const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
-                  const inputId = inputMap[st.currentNpcType];
+                  const inputId = getInputId(st.currentNpcType);
                   const stockItem = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
 
                   if (stockItem && stockItem.currentStock > 0) {
@@ -578,58 +583,16 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       let newHouses = JSON.parse(JSON.stringify(houses));
       let newWarehouseItems = JSON.parse(JSON.stringify(warehouseItems));
 
-      // 1. Refund Inputs
+      // 1. Refund Inputs (Batch inputs)
       task.requiredWarehouseItems.forEach(req => {
         const item = newWarehouseItems.find((w: WarehouseItem) => w.id === req.itemId);
         if (item) item.currentStock += req.count;
       });
       
-      // 2. Reverse Subtasks & Manual Refills
-      // Since we used snapshotting for slots, we mostly need to reverse Side Effects (Warehouse stocks)
-      
+      // 2. Reverse Outputs & Refills
       subTasks.forEach(st => {
           if (st.actionType === 'COLLECT_S') {
               onUpdateCollectedPets(NpcType.S, -1);
-              // Note: If we did a smart refill, we consumed stock.
-              // We need to refund that stock.
-              // We don't explicitly track "Did Smart Refill" in the log... 
-              // However, the *Snapshot* will restore the slot to its previous state (running pet or empty).
-              // If the slot currently has a running pet (from refill) and snapshot had running pet (from before), 
-              // we just need to fix the Warehouse stock count.
-              
-              // Complex Undo logic:
-              // If the snapshot shows the slot was running, and now it's running (refill),
-              // we essentially just swapped pets.
-              
-              // Actually, simpler approach:
-              // We modified Warehouse items in executeTaskComplete.
-              // We need to know *what* was modified.
-              // Ideally, we should snapshot the Warehouse too.
-              // Without warehouse snapshot, we have to infer.
-              
-              // Inference:
-              // If we "Collected S", we gained S. (Undone above)
-              // If we "Harvested & Stored", we gained output. (Need to undo)
-              // If we "Refilled", we lost input. (Need to undo)
-              
-              // How do we know if we refilled? 
-              // Check current house state vs snapshot? 
-              // No, we are about to overwrite house state with snapshot.
-              
-              // Let's check the *Task Logic* again. 
-              // The refill logic depended on `stockItem.currentStock > 0` at execution time.
-              // This is non-deterministic for undo.
-              
-              // HOTFIX for Undo reliability:
-              // We will blindly trust that the user didn't manually mess with warehouse too much between actions.
-              // A better fix is to add `warehouseSnapshot` to CompletedTaskLog.
-              // For now, we will accept that undo might be slightly off on warehouse counts for auto-refills
-              // unless we add that snapshot.
-              
-              // Given the constraints, let's stick to reversing the known outputs.
-              // Inputs are refunded above.
-              // Manual Refills consumed *extra* inputs. We should refund those if we detect the slot was refilled.
-              
           } else if (st.actionType === 'HARVEST_AND_STORE' || st.actionType === 'HARVEST_UPGRADE_AND_STORE') {
                const storeType = st.actionType === 'HARVEST_UPGRADE_AND_STORE' ? st.nextNpcType : st.currentNpcType;
                const wipMap: { [key in NpcType]?: string } = {
@@ -645,19 +608,13 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
                 }
           }
           
-          // Refund Smart Refills?
-          // Only if we can detect it happened.
-          // We can compare `newHouses` (current state) with `snapshot`.
-          // If current slot has a pet, and snapshot had a pet (that finished), 
-          // wait, `executeTaskComplete` cleared the finished pet, then maybe refilled.
-          // If the current slot has a pet that started *after* the task timestamp?
-          
-          // Okay, let's check the slot in the CURRENT `houses` state (before we overwrite it).
+          // Refund Smart Refills
+          // Logic: If we performed a smart refill, we consumed stock that wasn't part of requiredWarehouseItems.
+          // We check if the slot currently has a running pet that started at the timestamp of the log.
           const house = houses.find(h => h.id === task.houseId);
           const slot = house?.slots[st.slotIndex];
-          // If this slot has a pet that started roughly at `logEntry.timestamp`, it was a refill.
           if (slot && slot.pet.startTime && Math.abs(slot.pet.startTime - logEntry.timestamp) < 5000) {
-               // It was likely a refill! Refund the input.
+               // It was a refill. Refund the input.
                const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
                const inputId = inputMap[st.currentNpcType];
                const item = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
