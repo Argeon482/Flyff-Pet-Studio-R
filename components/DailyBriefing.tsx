@@ -99,13 +99,21 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
 
     subTasks.forEach(st => {
         // Detect if the source slot becomes empty after this action
-        const isSlotEmptying = 
+        const isSourceEmptying = 
             st.actionType === 'HARVEST_AND_STORE' || 
             st.actionType === 'COLLECT_S' || 
             st.actionType === 'HARVEST_UPGRADE_AND_STORE' ||
             (st.actionType === 'HARVEST_AND_RESTART' && (st.targetHouseId !== task.houseId || st.targetSlotIndex !== st.slotIndex));
 
-        if (isSlotEmptying) {
+        // CRITICAL FIX: Check if this slot is receiving a pet from ANOTHER subtask in this batch
+        // If Slot 1 is being emptied (moving to Slot 2), but Slot 0 is moving into Slot 1, we should NOT suggest a manual refill.
+        const isSlotReceivingInternalMove = subTasks.some(otherTask => 
+            otherTask.actionType === 'HARVEST_AND_RESTART' &&
+            (otherTask.targetHouseId === task.houseId || !otherTask.targetHouseId) &&
+            otherTask.targetSlotIndex === st.slotIndex
+        );
+
+        if (isSourceEmptying && !isSlotReceivingInternalMove) {
             // Check if we have the input stock to REFILL this slot immediately
              const inputMap: Record<string, string> = {
                 [NpcType.F]: 'f-pet-stock',
@@ -179,6 +187,7 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
              <div className="p-3 rounded bg-green-900/30 border border-green-600">
                 <h5 className="font-bold text-green-400 mb-1 flex items-center gap-2"><LinkedIcon /> Step 4: Finalize</h5>
                 <ul className="list-disc list-inside space-y-1">
+                    {/* We rely on manualRefills for inputs and placements for outputs. Redundant loop removed. */}
                     {manualRefills.map((r, i) => <li key={`refill-${i}`} dangerouslySetInnerHTML={{__html: r}} />)}
                     {placements.map((p, i) => <li key={i}>{p}.</li>)}
                     {deposits.map((d, i) => {
@@ -368,6 +377,19 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       }
   };
 
+  // Helper to resume timer
+  const handleResumeNpcTimer = (slot: any, now: number) => {
+        if (slot.npc.remainingDurationMs) {
+            const expDate = new Date(now + slot.npc.remainingDurationMs);
+            slot.npc.expiration = expDate.toISOString();
+            delete slot.npc.remainingDurationMs;
+        } else if (!slot.npc.expiration && slot.npc.duration) {
+            const expirationDate = new Date(now);
+            expirationDate.setDate(expirationDate.getDate() + slot.npc.duration);
+            slot.npc.expiration = expirationDate.toISOString();
+        }
+  }
+
   const executeTaskComplete = () => {
     if (!confirmTask) return;
     const task = confirmTask;
@@ -385,80 +407,103 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
         if (item && item.currentStock > 0) item.currentStock -= req.count;
     });
 
-    // 2. Execute SubTasks
+    // Snapshot state for Undo
     subTasks.forEach(st => {
         const house = newHouses.find((h: House) => h.id === task.houseId);
         const sourceSlot = house.slots[st.slotIndex];
-
-        // Store snapshot of state BEFORE modification for robust undo
         affectedSlotsSnapshot.push({
             houseId: task.houseId,
             slotIndex: st.slotIndex,
             previousPet: { ...sourceSlot.pet },
             previousNpc: { ...sourceSlot.npc }
         });
+    });
 
-        sourceSlot.pet = { name: null, startTime: null, finishTime: null };
+    // -------------------------------------------------------
+    // PHASE 1: HARVEST (Clear source slots)
+    // -------------------------------------------------------
+    // We must collect all pets first before placing anything to avoid overwrites in same-house transfers.
+    const pendingMoves: { type: NpcType, nextType: NpcType, targetHouseId?: number, targetSlotIndex?: number, action: string, sourceSlotIndex: number }[] = [];
+
+    subTasks.forEach(st => {
+        const house = newHouses.find((h: House) => h.id === task.houseId);
+        const sourceSlot = house.slots[st.slotIndex];
         
-        // Helper to determine input item for a slot type
-        const getInputId = (npcType: NpcType) => {
-             const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
-             return inputMap[npcType];
+        sourceSlot.pet = { name: null, startTime: null, finishTime: null }; // HARVEST!
+        
+        pendingMoves.push({
+            type: st.currentNpcType,
+            nextType: st.nextNpcType,
+            targetHouseId: st.targetHouseId,
+            targetSlotIndex: st.targetSlotIndex,
+            action: st.actionType,
+            sourceSlotIndex: st.slotIndex
+        });
+    });
+
+    // -------------------------------------------------------
+    // PHASE 2: PLACEMENT & OUTPUTS
+    // -------------------------------------------------------
+    const getInputId = (npcType: NpcType) => {
+         const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
+         return inputMap[npcType];
+    };
+    
+    const getWipId = (npcType: NpcType) => {
+        const wipMap: { [key in NpcType]?: string } = {
+            [NpcType.F]: 'f-pet-wip', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
+            [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip',
         };
+        return wipMap[npcType];
+    }
 
-        // Handle Outputs
-        if (st.actionType === 'COLLECT_S') {
+    pendingMoves.forEach(move => {
+         if (move.action === 'COLLECT_S') {
              onUpdateCollectedPets(NpcType.S, 1);
-             
-             // SMART REFILL or PAUSE Logic
-             const inputId = getInputId(st.currentNpcType);
-             const stockItem = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
-             
-             if (stockItem && stockItem.currentStock > 0) {
-                 // REFILL
-                 stockItem.currentStock--;
-                 const cycle = cycleTimes.find(c => c.npcType === st.currentNpcType);
-                 if (cycle) {
-                     const startTime = now;
-                     sourceSlot.pet = { name: `${st.currentNpcType}-Pet`, startTime, finishTime: startTime + cycle.time * 3600000 };
-                     
-                     // Resume NPC Timer
-                     if (sourceSlot.npc.remainingDurationMs) {
-                        const expDate = new Date(now + sourceSlot.npc.remainingDurationMs);
-                        sourceSlot.npc.expiration = expDate.toISOString();
-                        delete sourceSlot.npc.remainingDurationMs;
-                    } else if (!sourceSlot.npc.expiration && sourceSlot.npc.duration) {
-                        const expirationDate = new Date(now);
-                        expirationDate.setDate(expirationDate.getDate() + sourceSlot.npc.duration);
-                        sourceSlot.npc.expiration = expirationDate.toISOString();
-                    }
-                 }
-             } else {
-                 // PAUSE NPC
-                 if (sourceSlot.npc.expiration) {
-                     const exp = new Date(sourceSlot.npc.expiration).getTime();
-                     if (exp > now) {
-                        sourceSlot.npc.remainingDurationMs = exp - now;
-                        sourceSlot.npc.expiration = null;
-                     }
-                 }
-             }
-
-        } else if (st.actionType === 'HARVEST_AND_STORE' || st.actionType === 'HARVEST_UPGRADE_AND_STORE') {
-             const storeType = st.actionType === 'HARVEST_UPGRADE_AND_STORE' ? st.nextNpcType : st.currentNpcType;
-             const wipMap: { [key in NpcType]?: string } = {
-                [NpcType.F]: 'f-pet-wip', 
-                [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip',
-                [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip',
-                [NpcType.A]: 'a-pet-wip',
-            };
-            const itemId = wipMap[storeType]; 
-            if (itemId) {
+         } 
+         else if (move.action === 'HARVEST_AND_STORE' || move.action === 'HARVEST_UPGRADE_AND_STORE') {
+             const storeType = move.action === 'HARVEST_UPGRADE_AND_STORE' ? move.nextType : move.type;
+             const itemId = getWipId(storeType);
+             if (itemId) {
                 const item = newWarehouseItems.find((w: WarehouseItem) => w.id === itemId);
                 if (item) item.currentStock++;
-            }
+             }
+         } 
+         else if (move.action === 'HARVEST_AND_RESTART') {
+             const targetHId = move.targetHouseId || task.houseId;
+             // If targetSlotIndex is undefined, it implies same slot (though geminiService usually defines it for linked)
+             const targetSIdx = move.targetSlotIndex !== undefined ? move.targetSlotIndex : move.sourceSlotIndex;
+             
+             const targetHouse = newHouses.find((h: House) => h.id === targetHId);
+             if (targetHouse) {
+                 const targetSlot = targetHouse.slots[targetSIdx];
+                 const cycle = cycleTimes.find(c => c.npcType === move.nextType);
+                 if (cycle) {
+                     const startTime = now;
+                     targetSlot.pet = {
+                        name: `${move.nextType}-Pet`,
+                        startTime,
+                        finishTime: startTime + cycle.time * 3600000
+                    };
+                    handleResumeNpcTimer(targetSlot, now);
+                 }
+             }
+         }
+    });
 
-            // SMART REFILL or PAUSE Logic
+    // -------------------------------------------------------
+    // PHASE 3: SMART REFILL (Fill empty slots)
+    // -------------------------------------------------------
+    subTasks.forEach(st => {
+         const house = newHouses.find((h: House) => h.id === task.houseId);
+         const slot = house.slots[st.slotIndex];
+         
+         // A slot is a candidate for Smart Refill if:
+         // 1. It is empty (it was harvested in Phase 1)
+         // 2. It was NOT filled in Phase 2 (by an internal move)
+         
+         if (!slot.pet.startTime) {
+             // Check for stock
              const inputId = getInputId(st.currentNpcType);
              const stockItem = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
              
@@ -468,94 +513,20 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
                  const cycle = cycleTimes.find(c => c.npcType === st.currentNpcType);
                  if (cycle) {
                      const startTime = now;
-                     sourceSlot.pet = { name: `${st.currentNpcType}-Pet`, startTime, finishTime: startTime + cycle.time * 3600000 };
-                     
-                     // Resume NPC Timer
-                     if (sourceSlot.npc.remainingDurationMs) {
-                        const expDate = new Date(now + sourceSlot.npc.remainingDurationMs);
-                        sourceSlot.npc.expiration = expDate.toISOString();
-                        delete sourceSlot.npc.remainingDurationMs;
-                    } else if (!sourceSlot.npc.expiration && sourceSlot.npc.duration) {
-                        const expirationDate = new Date(now);
-                        expirationDate.setDate(expirationDate.getDate() + sourceSlot.npc.duration);
-                        sourceSlot.npc.expiration = expirationDate.toISOString();
-                    }
+                     slot.pet = { name: `${st.currentNpcType}-Pet`, startTime, finishTime: startTime + cycle.time * 3600000 };
+                     handleResumeNpcTimer(slot, now);
                  }
              } else {
                  // PAUSE NPC
-                 if (sourceSlot.npc.expiration) {
-                     const exp = new Date(sourceSlot.npc.expiration).getTime();
+                 if (slot.npc.expiration) {
+                     const exp = new Date(slot.npc.expiration).getTime();
                      if (exp > now) {
-                        sourceSlot.npc.remainingDurationMs = exp - now;
-                        sourceSlot.npc.expiration = null;
+                        slot.npc.remainingDurationMs = exp - now;
+                        slot.npc.expiration = null;
                      }
                  }
              }
-
-        } else if (st.actionType === 'HARVEST_AND_RESTART') {
-             const targetHId = st.targetHouseId || task.houseId;
-             const targetSIdx = st.targetSlotIndex !== undefined ? st.targetSlotIndex : st.slotIndex;
-             const targetHouse = newHouses.find((h: House) => h.id === targetHId);
-             const targetSlot = targetHouse.slots[targetSIdx];
-             
-             const cycle = cycleTimes.find(c => c.npcType === st.nextNpcType);
-             if (cycle) {
-                 const startTime = now;
-                 targetSlot.pet = {
-                    name: `${st.nextNpcType}-Pet`,
-                    startTime,
-                    finishTime: startTime + cycle.time * 3600000
-                };
-                
-                // Resume NPC Timer logic
-                if (targetSlot.npc.remainingDurationMs) {
-                    const expDate = new Date(now + targetSlot.npc.remainingDurationMs);
-                    targetSlot.npc.expiration = expDate.toISOString();
-                    delete targetSlot.npc.remainingDurationMs;
-                } else if (!targetSlot.npc.expiration && targetSlot.npc.duration) {
-                    // Buy new if not paused and expired/empty
-                    const expirationDate = new Date(now);
-                    expirationDate.setDate(expirationDate.getDate() + targetSlot.npc.duration);
-                    targetSlot.npc.expiration = expirationDate.toISOString();
-                }
-             }
-             
-             // Source Logic: If source is different from target (moving pet), source becomes empty.
-             // Check Smart Refill for SOURCE slot.
-             if (targetHId !== task.houseId || targetSIdx !== st.slotIndex) {
-                  const inputId = getInputId(st.currentNpcType);
-                  const stockItem = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
-
-                  if (stockItem && stockItem.currentStock > 0) {
-                      // REFILL Source
-                      stockItem.currentStock--;
-                      const sourceCycle = cycleTimes.find(c => c.npcType === st.currentNpcType);
-                      if (sourceCycle) {
-                          const startTime = now;
-                          sourceSlot.pet = { name: `${st.currentNpcType}-Pet`, startTime, finishTime: startTime + sourceCycle.time * 3600000 };
-                           // Resume NPC Timer
-                            if (sourceSlot.npc.remainingDurationMs) {
-                                const expDate = new Date(now + sourceSlot.npc.remainingDurationMs);
-                                sourceSlot.npc.expiration = expDate.toISOString();
-                                delete sourceSlot.npc.remainingDurationMs;
-                            } else if (!sourceSlot.npc.expiration && sourceSlot.npc.duration) {
-                                const expirationDate = new Date(now);
-                                expirationDate.setDate(expirationDate.getDate() + sourceSlot.npc.duration);
-                                sourceSlot.npc.expiration = expirationDate.toISOString();
-                            }
-                      }
-                  } else {
-                      // Pause Source NPC
-                      if (sourceSlot.npc.expiration) {
-                        const exp = new Date(sourceSlot.npc.expiration).getTime();
-                        if (exp > now) {
-                            sourceSlot.npc.remainingDurationMs = exp - now;
-                            sourceSlot.npc.expiration = null;
-                        }
-                    }
-                  }
-             }
-        }
+         }
     });
 
     const logEntry: CompletedTaskLog = {
