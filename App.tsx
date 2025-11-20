@@ -98,10 +98,29 @@ const App: React.FC = () => {
       });
   };
 
+  const handleLoadScenario = (key: string) => {
+      if (key === 'CURRENT') {
+          // Deep clone the user's actual saved state to allow simulation without affecting real data
+          if (userSavedState) {
+              setAppState(JSON.parse(JSON.stringify(userSavedState)));
+          }
+      } else {
+          // Load presets
+          switch (key) {
+              case 'EXAMPLE_2': loadExample(examples.getExample2House()); break;
+              case 'EXAMPLE_13': loadExample(examples.getExample13House()); break;
+              case 'EXAMPLE_26': loadExample(examples.getExample26House()); break;
+              case 'EXAMPLE_71': loadExample(examples.getExample71House()); break;
+          }
+      }
+  };
+
   const enterExampleMode = () => {
     setUserSavedState(appState);
     setIsInExampleMode(true);
     setSimulatedTime(Date.now());
+    // Default to loading the 2-House example to make it obvious we switched modes,
+    // but the user can now switch back to "Current" via the dropdown.
     loadExample(examples.getExample2House());
   };
 
@@ -414,7 +433,7 @@ const App: React.FC = () => {
       />
       {isInExampleMode && 
         <ExampleModeControls 
-            onSelectExample={loadExample}
+            onSelectScenario={handleLoadScenario}
             simulatedTime={simulatedTime}
             onSkipToCheckin={handleSkipToCheckin}
             onTimeTravel={handleTimeTravel}

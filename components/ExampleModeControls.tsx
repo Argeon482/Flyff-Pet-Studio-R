@@ -1,30 +1,32 @@
+
 import React from 'react';
-import * as examples from '../examples';
 
 interface ExampleModeControlsProps {
-  onSelectExample: (example: any) => void;
+  onSelectScenario: (scenarioKey: string) => void;
   simulatedTime: number | null;
   onSkipToCheckin: (direction: 'forward' | 'backward') => void;
   onTimeTravel: (amount: number, unit: 'day' | 'week') => void;
 }
 
 const ExampleModeControls: React.FC<ExampleModeControlsProps> = ({ 
-    onSelectExample, 
+    onSelectScenario, 
     simulatedTime, 
     onSkipToCheckin, 
     onTimeTravel 
 }) => {
-  const exampleSetups = [
-    { name: '2-House Startup', getData: examples.getExample2House },
-    { name: '13-House "Cash Engine"', getData: examples.getExample13House },
-    { name: '26-House Expansion', getData: examples.getExample26House },
-    { name: '71-House "Trifecta"', getData: examples.getExample71House },
+  
+  const scenarios = [
+    { key: 'CURRENT', label: 'Current Live Setup' },
+    { key: 'EXAMPLE_2', label: 'Preset: 2-House Startup' },
+    { key: 'EXAMPLE_13', label: 'Preset: 13-House Cash Engine' },
+    { key: 'EXAMPLE_26', label: 'Preset: 26-House Expansion' },
+    { key: 'EXAMPLE_71', label: 'Preset: 71-House Trifecta' },
   ];
   
   const TimeControlButton: React.FC<{onClick: () => void, children: React.ReactNode, label: string}> = ({onClick, children, label}) => (
     <button
       onClick={onClick}
-      className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-1 px-2 text-xs rounded-md transition-colors flex items-center"
+      className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-2 py-1 text-[10px] sm:text-xs rounded transition-colors flex items-center justify-center min-w-[30px]"
       title={label}
       aria-label={label}
     >
@@ -33,39 +35,45 @@ const ExampleModeControls: React.FC<ExampleModeControlsProps> = ({
   );
 
   return (
-    <div className="bg-purple-800 text-white p-2 shadow-lg sticky top-16 z-30">
-      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="text-center sm:text-left">
-            <span className="font-bold text-lg">PLAYGROUND MODE</span>
-            <span className="ml-2 text-sm opacity-80 hidden lg:inline">Your personal data is safe. Feel free to experiment!</span>
+    <div className="bg-purple-900/90 backdrop-blur-sm text-white p-1 shadow-lg sticky top-16 z-30 border-b border-purple-500/30">
+      <div className="max-w-full mx-auto px-2 sm:px-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          
+          {/* Left: Label & Dropdown */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="font-bold text-xs text-purple-200 uppercase tracking-wider hidden sm:inline">Playground:</span>
+            <select 
+                className="bg-purple-800 text-white text-xs rounded border border-purple-600 px-2 py-1 outline-none focus:ring-1 focus:ring-purple-400"
+                onChange={(e) => onSelectScenario(e.target.value)}
+                defaultValue=""
+            >
+                <option value="" disabled>Select Scenario...</option>
+                {scenarios.map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                ))}
+            </select>
           </div>
 
-          {/* Time Travel Controls */}
-          <div className="flex items-center gap-2">
+          {/* Right: Time Controls */}
+          <div className="flex items-center gap-1 flex-grow justify-end">
             <TimeControlButton onClick={() => onTimeTravel(-1, 'week')} label="Back one week">{'<< W'}</TimeControlButton>
             <TimeControlButton onClick={() => onTimeTravel(-1, 'day')} label="Back one day">{'< D'}</TimeControlButton>
             <TimeControlButton onClick={() => onSkipToCheckin('backward')} label="Back one check-in">{'< C'}</TimeControlButton>
-            <div className="bg-gray-900/50 rounded-md px-3 py-1 text-center">
-              <span className="font-mono text-sm">{simulatedTime ? new Date(simulatedTime).toLocaleString() : 'Loading...'}</span>
+            
+            <div className="bg-black/40 rounded px-2 py-1 text-center min-w-[120px]">
+              <span className="font-mono text-xs text-purple-100 block leading-none">
+                  {simulatedTime ? new Date(simulatedTime).toLocaleDateString() : 'Date'}
+              </span>
+              <span className="font-mono text-xs font-bold text-white block leading-none mt-0.5">
+                  {simulatedTime ? new Date(simulatedTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Time'}
+              </span>
             </div>
+
             <TimeControlButton onClick={() => onSkipToCheckin('forward')} label="Forward one check-in">{'> C'}</TimeControlButton>
             <TimeControlButton onClick={() => onTimeTravel(1, 'day')} label="Forward one day">{'> D'}</TimeControlButton>
             <TimeControlButton onClick={() => onTimeTravel(1, 'week')} label="Forward one week">{'W >>'}</TimeControlButton>
           </div>
           
-          {/* Example Loaders */}
-          <div className="flex flex-wrap gap-2 justify-center">
-            {exampleSetups.map(ex => (
-              <button
-                key={ex.name}
-                onClick={() => onSelectExample(ex.getData())}
-                className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-1 px-3 text-xs rounded-md transition-colors"
-              >
-                Load: {ex.name}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
     </div>
