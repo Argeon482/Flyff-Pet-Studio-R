@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot, CompletedTaskLog, VirtualHouse } from './types';
 import { CYCLE_TIMES, INITIAL_APP_STATE } from './constants';
@@ -305,19 +304,80 @@ const App: React.FC = () => {
   }, []);
   
   const handleSellPets = useCallback((petType: NpcType, quantity: number, pricePerUnit: number) => {
-    updateCollectedPets(petType, -quantity);
-    const totalValue = quantity * pricePerUnit;
     setAppState(prev => {
+      let newCollectedPets = [...prev.collectedPets];
+      let newWarehouseItems = [...prev.warehouseItems];
+      
+      // Logic to deduct pets
+      let remainingToSell = quantity;
+
+      // 1. Try Collected Pets first (Mainly S-Pets)
+      const existingCollected = newCollectedPets.find(p => p.petType === petType);
+      if (existingCollected) {
+          const sellAmount = Math.min(remainingToSell, existingCollected.quantity);
+          if (sellAmount > 0) {
+              newCollectedPets = newCollectedPets.map(p => 
+                  p.petType === petType ? { ...p, quantity: p.quantity - sellAmount } : p
+              ).filter(p => p.quantity > 0);
+              remainingToSell -= sellAmount;
+          }
+      }
+
+      // 2. If still need to sell, check Warehouse (WIP)
+      if (remainingToSell > 0) {
+          const wipMap: { [key in NpcType]?: string } = {
+              [NpcType.F]: 'f-pet-wip',
+              [NpcType.E]: 'e-pet-wip',
+              [NpcType.D]: 'd-pet-wip',
+              [NpcType.C]: 'c-pet-wip',
+              [NpcType.B]: 'b-pet-wip',
+              [NpcType.A]: 'a-pet-wip',
+          };
+          const wipId = wipMap[petType];
+          if (wipId) {
+              const wipItem = newWarehouseItems.find(i => i.id === wipId);
+              if (wipItem) {
+                  const sellAmount = Math.min(remainingToSell, wipItem.currentStock);
+                   if (sellAmount > 0) {
+                       wipItem.currentStock -= sellAmount;
+                       remainingToSell -= sellAmount;
+                   }
+              }
+          }
+      }
+
+      // 3. Special Case: F-Pets can also be in "Stock"
+      if (remainingToSell > 0 && petType === NpcType.F) {
+           const stockItem = newWarehouseItems.find(i => i.id === 'f-pet-stock');
+           if (stockItem) {
+               const sellAmount = Math.min(remainingToSell, stockItem.currentStock);
+               if (sellAmount > 0) {
+                   stockItem.currentStock -= sellAmount;
+                   remainingToSell -= sellAmount;
+               }
+           }
+      }
+
+      if (remainingToSell > 0) {
+          // Should be prevented by UI, but safety check
+          console.error("Tried to sell more than available");
+          return prev; 
+      }
+
+      const totalValue = quantity * pricePerUnit;
       const newRecord: SaleRecord = { 
         id: crypto.randomUUID(), petType, quantity, pricePerUnit, totalValue, timestamp: Date.now() 
       };
+
       return {
         ...prev,
+        collectedPets: newCollectedPets,
+        warehouseItems: newWarehouseItems,
         cashBalance: prev.cashBalance + totalValue,
         salesHistory: [newRecord, ...prev.salesHistory],
-      }
+      };
     });
-  }, [updateCollectedPets]);
+  }, []);
   
   const handlePerfectionAttempt = useCallback(() => {
     const championHouse = appState.houses.find(h => h.division === Division.CHAMPION);
@@ -366,7 +426,7 @@ const App: React.FC = () => {
 
               // 2. Handle Pet Completion & Auto-Restart
               // If a pet finished during the skip, we assume it was collected and a new one started immediately.
-              // Logic: Shift the finish time forward by N cycle durations so it is running relative to newTime.
+              // Logic: Shift finish time forward by N cycle durations so it is running relative to newTime.
               if (updatedSlot.pet.finishTime && updatedSlot.pet.finishTime <= newTime) {
                   const cycle = CYCLE_TIMES.find(c => c.npcType === updatedSlot.npc.type);
                   if (cycle) {
@@ -490,6 +550,7 @@ const App: React.FC = () => {
         return <PetSales
             prices={prices} onUpdatePrices={setPrices} collectedPets={collectedPets}
             salesHistory={salesHistory} onSellPets={handleSellPets}
+            warehouseItems={warehouseItems}
         />;
       default: return null;
     }
