@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { House, CycleTime, NpcType, Division, HouseTemplate, VirtualHouse } from '../types';
 import { DIVISIONS } from '../constants';
@@ -265,11 +266,16 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
         const now = simulatedTime || Date.now();
 
         if (slot.npc.type && cycle && slot.npc.duration) {
-            if (!slot.npc.expiration) {
+            // Auto-renewal check for Playground Mode / General usage
+            const currentExpiration = slot.npc.expiration ? new Date(slot.npc.expiration).getTime() : 0;
+            const isExpired = currentExpiration <= now;
+
+            if (!slot.npc.expiration || isExpired) {
                 const expirationDate = new Date(now);
                 expirationDate.setDate(expirationDate.getDate() + slot.npc.duration);
                 slot.npc.expiration = expirationDate.toISOString();
             }
+            
             slot.pet = {
                 name: `${slot.npc.type}-Pet`,
                 startTime: finishTime - (cycle.time * 3600000),
