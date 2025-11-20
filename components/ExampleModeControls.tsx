@@ -35,7 +35,7 @@ const ExampleModeControls: React.FC<ExampleModeControlsProps> = ({
   );
 
   return (
-    <div className="bg-purple-900/90 backdrop-blur-sm text-white p-1 shadow-lg sticky top-16 z-30 border-b border-purple-500/30">
+    <div className="bg-purple-900/90 backdrop-blur-sm text-white p-1 shadow-lg sticky top-16 z-30 border-b border-purple-500/30 w-full">
       <div className="max-w-full mx-auto px-2 sm:px-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           
@@ -43,7 +43,7 @@ const ExampleModeControls: React.FC<ExampleModeControlsProps> = ({
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="font-bold text-xs text-purple-200 uppercase tracking-wider hidden sm:inline">Playground:</span>
             <select 
-                className="bg-purple-800 text-white text-xs rounded border border-purple-600 px-2 py-1 outline-none focus:ring-1 focus:ring-purple-400"
+                className="bg-purple-800 text-white text-xs rounded border border-purple-600 px-2 py-1 outline-none focus:ring-1 focus:ring-purple-400 max-w-[150px] sm:max-w-none"
                 onChange={(e) => onSelectScenario(e.target.value)}
                 defaultValue=""
             >
@@ -55,12 +55,12 @@ const ExampleModeControls: React.FC<ExampleModeControlsProps> = ({
           </div>
 
           {/* Right: Time Controls */}
-          <div className="flex items-center gap-1 flex-grow justify-end">
+          <div className="flex flex-wrap items-center gap-1 flex-grow justify-end">
             <TimeControlButton onClick={() => onTimeTravel(-1, 'week')} label="Back one week">{'<< W'}</TimeControlButton>
             <TimeControlButton onClick={() => onTimeTravel(-1, 'day')} label="Back one day">{'< D'}</TimeControlButton>
             <TimeControlButton onClick={() => onSkipToCheckin('backward')} label="Back one check-in">{'< C'}</TimeControlButton>
             
-            <div className="bg-black/40 rounded px-2 py-1 text-center min-w-[120px]">
+            <div className="bg-black/40 rounded px-2 py-1 text-center min-w-[100px] sm:min-w-[120px]">
               <span className="font-mono text-xs text-purple-100 block leading-none">
                   {simulatedTime ? new Date(simulatedTime).toLocaleDateString() : 'Date'}
               </span>
