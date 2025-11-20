@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { House, DailyBriefingTask, CycleTime, WarehouseItem, NpcType, CompletedTaskLog, VirtualHouse } from '../types';
 import { generateDailyBriefing } from '../services/geminiService';
 import ConfirmationModal from './ConfirmationModal';
-import { TamerIcon, HarvestIcon, WarehouseIcon, ChampionIcon, VirtualIcon, LinkedIcon } from './icons/Icons';
+import { TamerIcon, HarvestIcon, WarehouseIcon, ChampionIcon, VirtualIcon, LinkedIcon, AlertIcon } from './icons/Icons';
 
 interface DailyBriefingProps {
   houses: House[];
@@ -38,12 +38,20 @@ const PetBadge: React.FC<{ type: NpcType }> = ({ type }) => {
 
 const BatchTaskVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
     const counts: Partial<Record<NpcType, number>> = {};
+    let hasRenewals = false;
     (task.subTasks || []).forEach(st => {
-        counts[st.currentNpcType] = (counts[st.currentNpcType] || 0) + 1;
+        if (st.actionType === 'RENEW_NPC') hasRenewals = true;
+        else counts[st.currentNpcType] = (counts[st.currentNpcType] || 0) + 1;
     });
 
     return (
         <div className="flex flex-wrap gap-2 items-center text-xs md:text-sm">
+             {hasRenewals && (
+                 <div className="flex items-center gap-1 px-2 py-1 rounded border bg-red-900/50 border-red-500 text-red-200 font-bold">
+                     <AlertIcon />
+                     <span>RENEW NPC</span>
+                 </div>
+             )}
              {/* Inputs */}
              {task.requiredWarehouseItems?.map(req => {
                  const item = warehouseItems.find(i => i.id === req.itemId);
@@ -56,13 +64,17 @@ const BatchTaskVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
                  )
              })}
             
-            <span className="text-gray-500 ml-1">Harvest:</span>
-            {Object.entries(counts).map(([type, count]) => (
-                 <div key={type} className="flex items-center gap-1">
-                    <span className="font-bold">{count}x</span>
-                    <PetBadge type={type as NpcType} />
-                </div>
-            ))}
+            {Object.keys(counts).length > 0 && (
+                <>
+                    <span className="text-gray-500 ml-1">Harvest:</span>
+                    {Object.entries(counts).map(([type, count]) => (
+                        <div key={type} className="flex items-center gap-1">
+                            <span className="font-bold">{count}x</span>
+                            <PetBadge type={type as NpcType} />
+                        </div>
+                    ))}
+                </>
+            )}
         </div>
     );
 };
@@ -70,8 +82,17 @@ const BatchTaskVisual: React.FC<{ task: DailyBriefingTask, warehouseItems: Wareh
 const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems: WarehouseItem[] }> = ({ task, warehouseItems }) => {
     const subTasks = task.subTasks || [];
     
-    const harvestList = subTasks.map(st => st.currentNpcType).join(', ');
-    const upgradeList = subTasks.filter(st => st.actionType !== 'HARVEST_AND_STORE').map(st => `${st.currentNpcType}→${st.nextNpcType}`).join(', ');
+    const renewals = subTasks.filter(st => st.actionType === 'RENEW_NPC');
+    
+    const harvestList = subTasks
+        .filter(st => st.actionType !== 'RENEW_NPC')
+        .map(st => st.currentNpcType)
+        .join(', ');
+    
+    const upgradeList = subTasks
+        .filter(st => st.actionType !== 'HARVEST_AND_STORE' && st.actionType !== 'RENEW_NPC' && st.actionType !== 'COLLECT_S')
+        .map(st => `${st.currentNpcType}→${st.nextNpcType}`)
+        .join(', ');
     
     // Group placements by location
     const placements: string[] = [];
@@ -105,8 +126,7 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
             st.actionType === 'HARVEST_UPGRADE_AND_STORE' ||
             (st.actionType === 'HARVEST_AND_RESTART' && (st.targetHouseId !== task.houseId || st.targetSlotIndex !== st.slotIndex));
 
-        // CRITICAL FIX: Check if this slot is receiving a pet from ANOTHER subtask in this batch
-        // If Slot 1 is being emptied (moving to Slot 2), but Slot 0 is moving into Slot 1, we should NOT suggest a manual refill.
+        // Check if this slot is receiving a pet from ANOTHER subtask in this batch
         const isSlotReceivingInternalMove = subTasks.some(otherTask => 
             otherTask.actionType === 'HARVEST_AND_RESTART' &&
             (otherTask.targetHouseId === task.houseId || !otherTask.targetHouseId) &&
@@ -132,10 +152,8 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
             const item = warehouseItems.find(w => w.id === inputId);
             
             if (item && item.currentStock > 0) {
-                // We have stock! Suggest refill.
                 manualRefills.push(`In House #${task.houseId}: Place <strong>${itemNameMap[st.currentNpcType]}</strong> into Slot ${st.slotIndex + 1}`);
             } else {
-                // No stock. Suggest pause.
                 npcRemovals.push(`Remove ${st.currentNpcType}-NPC from House #${task.houseId} to pause timer`);
             }
         }
@@ -143,6 +161,17 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
     
     return (
         <div className="space-y-5 text-sm text-gray-200">
+            {renewals.length > 0 && (
+                <div className="p-3 rounded bg-red-900/50 border border-red-600">
+                    <h5 className="font-bold text-red-400 mb-1 flex items-center gap-2"><AlertIcon /> Step 0: RENEWALS REQUIRED</h5>
+                    <ul className="list-disc list-inside">
+                        {renewals.map((r, i) => (
+                            <li key={i}>Renew <strong>{r.currentNpcType}-NPC</strong> in Slot {r.slotIndex + 1} (Expired).</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
              {/* Step 1: Warehouse Prep */}
              {task.requiredWarehouseItems.length > 0 && (
                 <div className="p-3 rounded border bg-gray-800 border-gray-600">
@@ -166,12 +195,14 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
              )}
 
              {/* Step 2: House Harvest */}
-             <div className="p-3 rounded bg-gray-800 border border-gray-600">
-                <h5 className="font-bold text-cyan-400 mb-1 flex items-center gap-2"><HarvestIcon /> Step 2: House #{task.houseId} Harvest</h5>
-                <ul className="list-disc list-inside">
-                    <li>Harvest <strong>ALL</strong> finished pets: {harvestList}.</li>
-                </ul>
-             </div>
+             {harvestList && (
+                 <div className="p-3 rounded bg-gray-800 border border-gray-600">
+                    <h5 className="font-bold text-cyan-400 mb-1 flex items-center gap-2"><HarvestIcon /> Step 2: House #{task.houseId} Harvest</h5>
+                    <ul className="list-disc list-inside">
+                        <li>Harvest <strong>ALL</strong> finished pets: {harvestList}.</li>
+                    </ul>
+                 </div>
+             )}
 
              {/* Step 3: Upgrade Run */}
              {upgradeList && (
@@ -184,19 +215,20 @@ const OptimizedWorkflowGuide: React.FC<{ task: DailyBriefingTask, warehouseItems
              )}
 
              {/* Step 4: Placement */}
-             <div className="p-3 rounded bg-green-900/30 border border-green-600">
-                <h5 className="font-bold text-green-400 mb-1 flex items-center gap-2"><LinkedIcon /> Step 4: Finalize</h5>
-                <ul className="list-disc list-inside space-y-1">
-                    {/* We rely on manualRefills for inputs and placements for outputs. Redundant loop removed. */}
-                    {manualRefills.map((r, i) => <li key={`refill-${i}`} dangerouslySetInnerHTML={{__html: r}} />)}
-                    {placements.map((p, i) => <li key={i}>{p}.</li>)}
-                    {deposits.map((d, i) => {
-                         const label = d.actionType === 'HARVEST_UPGRADE_AND_STORE' ? d.nextNpcType : d.currentNpcType;
-                         return <li key={`dep-${i}`}>Deposit <strong>{label}-Pet</strong> into Warehouse.</li>
-                    })}
-                    {npcRemovals.map((rem, i) => <li key={`rem-${i}`} className="text-yellow-400">{rem}.</li>)}
-                </ul>
-             </div>
+             {(manualRefills.length > 0 || placements.length > 0 || deposits.length > 0 || npcRemovals.length > 0) && (
+                 <div className="p-3 rounded bg-green-900/30 border border-green-600">
+                    <h5 className="font-bold text-green-400 mb-1 flex items-center gap-2"><LinkedIcon /> Step 4: Finalize Placement</h5>
+                    <ul className="list-disc list-inside space-y-1">
+                        {manualRefills.map((r, i) => <li key={`refill-${i}`} dangerouslySetInnerHTML={{__html: r}} />)}
+                        {placements.map((p, i) => <li key={i}>{p}.</li>)}
+                        {deposits.map((d, i) => {
+                             const label = d.actionType === 'HARVEST_UPGRADE_AND_STORE' ? d.nextNpcType : d.currentNpcType;
+                             return <li key={`dep-${i}`}>Deposit <strong>{label}-Pet</strong> into Warehouse.</li>
+                        })}
+                        {npcRemovals.map((rem, i) => <li key={`rem-${i}`} className="text-yellow-400">{rem}.</li>)}
+                    </ul>
+                 </div>
+             )}
         </div>
     );
 }
@@ -420,25 +452,47 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
     });
 
     // -------------------------------------------------------
-    // PHASE 1: HARVEST (Clear source slots)
+    // PHASE 1: HARVEST / RENEW (Processing Phase)
     // -------------------------------------------------------
-    // We must collect all pets first before placing anything to avoid overwrites in same-house transfers.
     const pendingMoves: { type: NpcType, nextType: NpcType, targetHouseId?: number, targetSlotIndex?: number, action: string, sourceSlotIndex: number }[] = [];
 
     subTasks.forEach(st => {
         const house = newHouses.find((h: House) => h.id === task.houseId);
         const sourceSlot = house.slots[st.slotIndex];
         
-        sourceSlot.pet = { name: null, startTime: null, finishTime: null }; // HARVEST!
-        
-        pendingMoves.push({
-            type: st.currentNpcType,
-            nextType: st.nextNpcType,
-            targetHouseId: st.targetHouseId,
-            targetSlotIndex: st.targetSlotIndex,
-            action: st.actionType,
-            sourceSlotIndex: st.slotIndex
-        });
+        if (st.actionType === 'RENEW_NPC') {
+             // Renew Logic: Extend expiration and shift pet times forward
+             const durationMs = (sourceSlot.npc.duration || 15) * 24 * 3600000;
+             const expirationDate = new Date(now + durationMs);
+             
+             const oldExpiration = sourceSlot.npc.expiration ? new Date(sourceSlot.npc.expiration).getTime() : now;
+             // Calculate lost time if it was expired
+             let lostTime = 0;
+             if (oldExpiration < now) {
+                 lostTime = now - oldExpiration;
+             }
+
+             sourceSlot.npc.expiration = expirationDate.toISOString();
+             
+             // Shift pet timer if active
+             if (sourceSlot.pet.finishTime && lostTime > 0) {
+                 sourceSlot.pet.finishTime += lostTime;
+                 sourceSlot.pet.startTime += lostTime;
+             }
+
+             // Renewals don't generate moves
+        } else {
+            // Harvest Logic
+            sourceSlot.pet = { name: null, startTime: null, finishTime: null }; 
+            pendingMoves.push({
+                type: st.currentNpcType,
+                nextType: st.nextNpcType,
+                targetHouseId: st.targetHouseId,
+                targetSlotIndex: st.targetSlotIndex,
+                action: st.actionType,
+                sourceSlotIndex: st.slotIndex
+            });
+        }
     });
 
     // -------------------------------------------------------
@@ -471,7 +525,6 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
          } 
          else if (move.action === 'HARVEST_AND_RESTART') {
              const targetHId = move.targetHouseId || task.houseId;
-             // If targetSlotIndex is undefined, it implies same slot (though geminiService usually defines it for linked)
              const targetSIdx = move.targetSlotIndex !== undefined ? move.targetSlotIndex : move.sourceSlotIndex;
              
              const targetHouse = newHouses.find((h: House) => h.id === targetHId);
@@ -495,12 +548,10 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
     // PHASE 3: SMART REFILL (Fill empty slots)
     // -------------------------------------------------------
     subTasks.forEach(st => {
+         if (st.actionType === 'RENEW_NPC') return; // Don't refill renewals
+
          const house = newHouses.find((h: House) => h.id === task.houseId);
          const slot = house.slots[st.slotIndex];
-         
-         // A slot is a candidate for Smart Refill if:
-         // 1. It is empty (it was harvested in Phase 1)
-         // 2. It was NOT filled in Phase 2 (by an internal move)
          
          if (!slot.pet.startTime) {
              // Check for stock
@@ -562,7 +613,9 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
       
       // 2. Reverse Outputs & Refills
       subTasks.forEach(st => {
-          if (st.actionType === 'COLLECT_S') {
+          if (st.actionType === 'RENEW_NPC') {
+              // State restore is handled by snapshot below, no inventory to refund
+          } else if (st.actionType === 'COLLECT_S') {
               onUpdateCollectedPets(NpcType.S, -1);
           } else if (st.actionType === 'HARVEST_AND_STORE' || st.actionType === 'HARVEST_UPGRADE_AND_STORE') {
                const storeType = st.actionType === 'HARVEST_UPGRADE_AND_STORE' ? st.nextNpcType : st.currentNpcType;
@@ -580,12 +633,9 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
           }
           
           // Refund Smart Refills
-          // Logic: If we performed a smart refill, we consumed stock that wasn't part of requiredWarehouseItems.
-          // We check if the slot currently has a running pet that started at the timestamp of the log.
           const house = houses.find(h => h.id === task.houseId);
           const slot = house?.slots[st.slotIndex];
           if (slot && slot.pet.startTime && Math.abs(slot.pet.startTime - logEntry.timestamp) < 5000) {
-               // It was a refill. Refund the input.
                const inputMap: Record<string, string> = { [NpcType.F]: 'f-pet-stock', [NpcType.E]: 'e-pet-wip', [NpcType.D]: 'd-pet-wip', [NpcType.C]: 'c-pet-wip', [NpcType.B]: 'b-pet-wip', [NpcType.A]: 'a-pet-wip' };
                const inputId = inputMap[st.currentNpcType];
                const item = newWarehouseItems.find((w: WarehouseItem) => w.id === inputId);
@@ -598,7 +648,6 @@ const DailyBriefing: React.FC<DailyBriefingProps> = ({
           logEntry.affectedSlots.forEach(snap => {
               const house = newHouses.find((h: House) => h.id === snap.houseId);
               if (house) {
-                  // Restore the exact state of the slot
                   house.slots[snap.slotIndex].pet = snap.previousPet;
                   house.slots[snap.slotIndex].npc = snap.previousNpc;
               }

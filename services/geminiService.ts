@@ -94,16 +94,8 @@ const calculateProjectedProfit = (
             const chain: GraphNode[] = [];
             const queue = [nodeId];
             visited.add(nodeId);
-            
-            // BFS/DFS to find all nodes in this undirected component
-            // Note: Our graph is directed, but for grouping a production line, we treat it as undirected connection
-            // We need a bi-directional lookup for grouping, or just iterate and merge.
-            // Simpler approach: Iterate structure logic again for grouping or use Union-Find.
-            // Let's use a simple flood fill on the directed graph + searching for parents.
-            // ACTUALLY: A simpler heuristic for this specific game:
-            // A Chain is defined by the SINK. We find Sinks, then walk backwards?
-            // No, Virtual Houses can be complex.
-            // Let's stick to Union-Find for robust grouping.
+            // Note: This basic iteration catches nodes. A full traversal is needed for perfect graph theory,
+            // but our node map + Union Find below is the robust way.
         }
     }
 
@@ -192,18 +184,8 @@ const calculateProjectedProfit = (
         // If Node takes 10h and Bottleneck takes 50h, Node is utilized 20% (0.2).
         // It is "Paused" the rest of the time.
         chainNodes.forEach(node => {
-            // We use raw cycle times for ratio, assuming perfect synchronization relative to check-ins
-            // Or we can assume the idle time distributes. Raw ratio is safer for "Running Time" cost.
-            // Cost is based on 7-day or 15-day duration running down.
-            // If utilized 20%, the 15-day duration lasts 5x longer in real time? 
-            // NO. In game, you remove the NPC.
-            // So, Expense = (Weekly Cost of NPC) * Utilization %
-            
             const utilization = Math.min(1, node.cycleTime / maxRawCycleTime);
-            
             const baseWeeklyCost = (node.duration === 7 ? prices.npcCost7Day : prices.npcCost15Day) * (7 / node.duration);
-            
-            // Adjusted expense
             npcExpenses += baseWeeklyCost * utilization;
         });
     });
@@ -305,9 +287,9 @@ export const generateDailyBriefing = (
     const npcRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A];
     const inputMap: Record<string, string> = {
         [NpcType.F]: 'f-pet-stock',
-        [NpcType.E]: 'e-pet-wip', // E-NPC needs E-Pet
+        [NpcType.E]: 'e-pet-wip', 
         [NpcType.D]: 'd-pet-wip',
-        [NpcType.C]: 'c-pet-wip', // C-NPC needs C-Pet (Created by upgrading D)
+        [NpcType.C]: 'c-pet-wip', 
         [NpcType.B]: 'b-pet-wip',
         [NpcType.A]: 'a-pet-wip',
     };
@@ -325,18 +307,48 @@ export const generateDailyBriefing = (
         const batchedTasks: DailyBriefingTask[] = [];
         
         houses.forEach(h => {
-            const activeSlots = h.slots.filter(s => s.npc.type !== null);
+            const subTasks: DailyBriefingTask['subTasks'] = [];
+            const requiredItems: DailyBriefingTask['requiredWarehouseItems'] = [];
+            let maxFinishTime = 0;
+            
+            // 1. Check for Expired NPCs (RENEW_NPC)
+            // High priority: If NPC is expired, we must renew it before any harvesting can happen
+            // Note: We only check for expiration if there is a pet timer active (meaning production stopped)
+            // or if it's just expired.
+            // For simplicity, any expired NPC generates a renewal task.
+            
+            const expiredSlots = h.slots.map((s, i) => ({ ...s, slotIndex: i})).filter(s => {
+                if (!s.npc.type || !s.npc.expiration) return false;
+                return new Date(s.npc.expiration).getTime() <= nowTimestamp;
+            });
+
+            if (expiredSlots.length > 0) {
+                 expiredSlots.forEach(slot => {
+                     subTasks.push({
+                         slotIndex: slot.slotIndex,
+                         currentNpcType: slot.npc.type!,
+                         nextNpcType: slot.npc.type!, // Renewing same type
+                         actionType: 'RENEW_NPC',
+                     });
+                 });
+                 // Renewal tasks happen "NOW"
+                 if (nowTimestamp > maxFinishTime) maxFinishTime = nowTimestamp;
+            }
+            
+            // 2. Check for Finished Pets (Harvest)
             const finishedSlotsInHouse = h.slots
                 .map((s, i) => ({ ...s, slotIndex: i }))
                 .filter(s => s.pet.finishTime && filterFn(s.pet.finishTime));
-            
-            if (finishedSlotsInHouse.length > 0) {
-                const isFullyReady = activeSlots.length > 0 && activeSlots.length === finishedSlotsInHouse.length;
-                const subTasks: DailyBriefingTask['subTasks'] = [];
-                const requiredItems: DailyBriefingTask['requiredWarehouseItems'] = [];
-                let maxFinishTime = 0;
+
+            if (finishedSlotsInHouse.length > 0 || expiredSlots.length > 0) {
+                const activeSlots = h.slots.filter(s => s.npc.type !== null);
+                // If we have expired slots, we treat this as "Ready" to ensure it gets attention
+                const isFullyReady = expiredSlots.length > 0 || (activeSlots.length > 0 && activeSlots.length === finishedSlotsInHouse.length);
 
                 finishedSlotsInHouse.forEach(slot => {
+                    // Skip if this slot is already covered by a renewal task (rare edge case)
+                    if (subTasks.some(st => st.slotIndex === slot.slotIndex && st.actionType === 'RENEW_NPC')) return;
+
                     const currentNpcType = slot.npc.type!;
                     const mode = slot.npc.mode || 'LINKED';
                     const currentRankIndex = npcRankOrder.indexOf(currentNpcType);
@@ -344,7 +356,7 @@ export const generateDailyBriefing = (
                     
                     if (slot.pet.finishTime! > maxFinishTime) maxFinishTime = slot.pet.finishTime!;
 
-                    // 1. INPUT Calculation (Chain of Custody)
+                    // INPUT Calculation
                     if (slot.slotIndex === 0) {
                         const itemId = inputMap[currentNpcType];
                         const itemName = inputNameMap[currentNpcType];
@@ -355,13 +367,12 @@ export const generateDailyBriefing = (
                         }
                     }
 
-                    // 2. ACTION Calculation
+                    // ACTION Calculation
                     let actionType: DailyBriefingTask['subTasks'][0]['actionType'] = 'HARVEST_AND_RESTART';
                     let targetHouseId: number | undefined;
                     let targetSlotIndex: number | undefined;
                     let virtualHouseName: string | undefined;
 
-                    // Determine intended target
                     let potentialTargetHouseId: number | undefined;
                     let potentialTargetSlotIndex: number | undefined;
 
@@ -389,35 +400,29 @@ export const generateDailyBriefing = (
                         }
                     }
 
-                    // 3. TRAFFIC CONTROL: Check if potential target is blocked
-                    // If there is a target, but it is occupied AND not being harvested in this batch,
-                    // we must degrade the action to "Store".
+                    // TRAFFIC CONTROL
                     if (potentialTargetHouseId !== undefined && potentialTargetSlotIndex !== undefined) {
                         const targetHouse = houses.find(house => house.id === potentialTargetHouseId);
                         const targetSlot = targetHouse?.slots[potentialTargetSlotIndex];
                         
                         if (targetSlot) {
-                            const isTargetOccupied = !!targetSlot.pet.startTime; // Simple check: Does it have a pet?
+                            const isTargetOccupied = !!targetSlot.pet.startTime;
                             
-                            // Check if target is being cleared in THIS batch (only works for Linked/Same-House batches)
                             let isTargetBeingCleared = false;
                             if (potentialTargetHouseId === h.id) {
                                 isTargetBeingCleared = finishedSlotsInHouse.some(s => s.slotIndex === potentialTargetSlotIndex);
                             }
 
                             if (isTargetOccupied && !isTargetBeingCleared) {
-                                // Blocked! Force Store.
                                 actionType = 'HARVEST_UPGRADE_AND_STORE';
                             } else {
-                                // Path clear.
                                 targetHouseId = potentialTargetHouseId;
                                 targetSlotIndex = potentialTargetSlotIndex;
                             }
                         } else {
-                             actionType = 'HARVEST_UPGRADE_AND_STORE'; // Target slot doesn't exist
+                             actionType = 'HARVEST_UPGRADE_AND_STORE';
                         }
                     } else {
-                        // No target (End of Chain)
                         if (currentRankIndex === npcRankOrder.length - 1) {
                              actionType = 'COLLECT_S';
                         } else {
@@ -438,16 +443,19 @@ export const generateDailyBriefing = (
 
                 subTasks.sort((a, b) => a.slotIndex - b.slotIndex);
 
-                batchedTasks.push({
-                    id: `batch-${h.id}-${maxFinishTime}`,
-                    houseId: h.id,
-                    serviceBlock: h.serviceBlock,
-                    taskLabel: `Service House #${h.id}`,
-                    estFinishTime: new Date(maxFinishTime).toLocaleString([], { hour: '2-digit', minute: '2-digit' }),
-                    subTasks,
-                    requiredWarehouseItems: requiredItems,
-                    isFullyReady,
-                });
+                // Only push if we have tasks
+                if (subTasks.length > 0) {
+                    batchedTasks.push({
+                        id: `batch-${h.id}-${maxFinishTime}-${subTasks.length}`,
+                        houseId: h.id,
+                        serviceBlock: h.serviceBlock,
+                        taskLabel: expiredSlots.length > 0 ? `Renewals & Service House #${h.id}` : `Service House #${h.id}`,
+                        estFinishTime: new Date(maxFinishTime).toLocaleString([], { hour: '2-digit', minute: '2-digit' }),
+                        subTasks,
+                        requiredWarehouseItems: requiredItems,
+                        isFullyReady,
+                    });
+                }
             }
         });
 
@@ -456,20 +464,14 @@ export const generateDailyBriefing = (
 
     const sortTasks = (tasks: DailyBriefingTask[]) => {
         return tasks.sort((a, b) => {
-            // 1. Completeness (Fully Ready first)
             if (a.isFullyReady && !b.isFullyReady) return -1;
             if (!a.isFullyReady && b.isFullyReady) return 1;
-
             const houseA = houses.find(h => h.id === a.houseId);
             const houseB = houses.find(h => h.id === b.houseId);
-
-            // 2. Division Priority (Nursery > Factory)
             const isNurseryA = houseA?.division === Division.NURSERY;
             const isNurseryB = houseB?.division === Division.NURSERY;
             if (isNurseryA && !isNurseryB) return -1;
             if (!isNurseryA && isNurseryB) return 1;
-
-            // 3. House ID Order
             return a.houseId - b.houseId;
         });
     };
@@ -494,27 +496,25 @@ export const generateDashboardAnalytics = (
     const now = currentTime ? new Date(currentTime) : new Date();
     const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-    // NPC expiration alerts
     houses.forEach(house => {
         house.slots.forEach(slot => {
-            // Only alert if NPC is active (has expiration)
             if (slot.npc.type && slot.npc.expiration) {
                 const expirationDate = new Date(slot.npc.expiration);
-                if (expirationDate > now && expirationDate <= twentyFourHoursFromNow) {
+                if (expirationDate.getTime() <= now.getTime()) {
+                     alerts.push(`CRITICAL: NPC '${slot.npc.type}' in House #${house.id} is EXPIRED.`);
+                } else if (expirationDate <= twentyFourHoursFromNow) {
                     alerts.push(`NPC '${slot.npc.type}' in House #${house.id} expires soon.`);
                 }
             }
         });
     });
 
-    // Warehouse stock alerts
     warehouseItems.forEach(item => {
         if (item.currentStock < item.safetyStockLevel) {
             alerts.push(`'${item.name}' is below safety stock level.`);
         }
     });
 
-    // Next action
     let nextFinishTime = Infinity;
     let nextServiceBlock = '';
 
