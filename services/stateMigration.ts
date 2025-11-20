@@ -1,3 +1,4 @@
+
 import { AppState } from '../types';
 import { INITIAL_APP_STATE } from '../constants';
 
@@ -38,10 +39,13 @@ export const migrateState = (loadedState: Partial<AppState>): AppState => {
     if (!migrated.completedTaskLog) {
         migrated.completedTaskLog = [];
     } else {
-        // CRITICAL FIX: Filter out legacy logs that don't have the new 'subTasks' structure.
-        // Attempting to render old logs without subTasks causes the DailyBriefing to crash.
+        // CRITICAL FIX: Filter out legacy logs that don't have the new 'subTasks' structure OR old snapshot structure.
+        // The new undo logic requires 'previousNpc' in affectedSlots.
         migrated.completedTaskLog = migrated.completedTaskLog.filter((log: any) => 
-            log.task && Array.isArray(log.task.subTasks)
+            log.task && 
+            Array.isArray(log.task.subTasks) &&
+            Array.isArray(log.affectedSlots) &&
+            log.affectedSlots.every((slot: any) => slot.previousNpc !== undefined)
         );
     }
     
@@ -60,14 +64,11 @@ export const migrateState = (loadedState: Partial<AppState>): AppState => {
                 ...slot,
                 npc: {
                     ...slot.npc,
-                    mode: slot.npc.mode || (isIndependent ? 'SOLO' : 'LINKED')
+                    mode: slot.npc.mode || (isIndependent ? 'SOLO' : 'LINKED'),
+                    // Ensure remainingDurationMs is handled if present (auto-merged)
                 }
             }));
 
-            // Remove the legacy property implicitly by not including it in the returned object
-            // if we were creating a fresh object, but here we are mutating/mapping.
-            // We keep the other props and overwrite slots.
-            // Delete legacy property to clean up state
             delete h.productionMode;
 
             return {

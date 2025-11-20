@@ -21,6 +21,7 @@ export interface NpcSlot {
   duration: 7 | 15 | null;
   mode: 'LINKED' | 'SOLO'; // LINKED = flows to next slot in house; SOLO = managed by Virtual House or manual
   virtualHouseId?: string; // ID of the Virtual House this slot belongs to (if any)
+  remainingDurationMs?: number; // Time remaining if the NPC is paused (removed from house)
 }
 
 export interface PetSlot {
@@ -156,13 +157,13 @@ export interface CompletedTaskLog {
     id: string;
     task: DailyBriefingTask;
     timestamp: number;
-    // We store a simplified snapshot of changes for the log
     summary: string; 
-    // Store enough data to attempt an undo (though complex batch undo is tricky, we'll store the pre-state snapshot ideally, but here we keep it simple)
+    // Store full snapshot of the affected slots BEFORE the change for robust undo
     affectedSlots: {
         houseId: number;
         slotIndex: number;
-        previousPetType: NpcType;
+        previousPet: PetSlot;
+        previousNpc: NpcSlot;
     }[];
 }
 

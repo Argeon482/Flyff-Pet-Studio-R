@@ -178,11 +178,19 @@ const SetExpirationModal: React.FC<{ onClose: () => void; onSave: (remainingMs: 
 };
 
 
-const NpcExpirationDisplay: React.FC<{ expiration: string | null; simulatedTime: number | null }> = ({ expiration, simulatedTime }) => {
-    if (!expiration) return <span className="text-sm text-gray-500">Not Started</span>;
+const NpcExpirationDisplay: React.FC<{ expiration: string | null; simulatedTime: number | null; remainingDurationMs?: number }> = ({ expiration, simulatedTime, remainingDurationMs }) => {
+    if (!expiration && !remainingDurationMs) return <span className="text-sm text-gray-500">Not Started</span>;
     
+    if (!expiration && remainingDurationMs) {
+        // Paused State
+        const days = Math.floor(remainingDurationMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((remainingDurationMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        return <span className="text-sm text-yellow-500 font-medium">Paused ({days}d {hours}h)</span>;
+    }
+
+    // Active State
     const now = simulatedTime || Date.now();
-    const expirationTime = new Date(expiration).getTime();
+    const expirationTime = new Date(expiration!).getTime();
     const remaining = expirationTime - now;
 
     if (remaining <= 0) return <span className="text-sm text-red-400">Expired</span>;
@@ -243,6 +251,7 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
             if (field === 'type' && !value) {
                 npcSlot.duration = null;
                 npcSlot.expiration = null;
+                delete npcSlot.remainingDurationMs; // Clear paused state if type cleared
             }
             // If toggling to LINKED, remove from virtual house if it was in one
             if (field === 'mode' && value === 'LINKED') {
@@ -266,14 +275,23 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
         const now = simulatedTime || Date.now();
 
         if (slot.npc.type && cycle && slot.npc.duration) {
-            // Auto-renewal check for Playground Mode / General usage
-            const currentExpiration = slot.npc.expiration ? new Date(slot.npc.expiration).getTime() : 0;
-            const isExpired = currentExpiration <= now;
-
-            if (!slot.npc.expiration || isExpired) {
-                const expirationDate = new Date(now);
-                expirationDate.setDate(expirationDate.getDate() + slot.npc.duration);
+            // Handle NPC Timer (Resume or Buy New)
+            if (slot.npc.remainingDurationMs) {
+                // RESUME PAUSED TIMER
+                const expirationDate = new Date(now + slot.npc.remainingDurationMs);
                 slot.npc.expiration = expirationDate.toISOString();
+                delete slot.npc.remainingDurationMs; // Clear the pause state
+            } else {
+                // STANDARD CHECK
+                const currentExpiration = slot.npc.expiration ? new Date(slot.npc.expiration).getTime() : 0;
+                const isExpired = currentExpiration <= now;
+
+                if (!slot.npc.expiration || isExpired) {
+                    // Buy New
+                    const expirationDate = new Date(now);
+                    expirationDate.setDate(expirationDate.getDate() + slot.npc.duration);
+                    slot.npc.expiration = expirationDate.toISOString();
+                }
             }
             
             slot.pet = {
@@ -367,6 +385,7 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
             const now = simulatedTime || Date.now();
             const expirationDate = new Date(now + remainingMs);
             newSlots[slotIndex].npc.expiration = expirationDate.toISOString();
+            delete newSlots[slotIndex].npc.remainingDurationMs; // Clear paused state if manually setting expiration
             onUpdateHouse({ ...house, slots: newSlots });
         }
         setExpirationInputSlot(null);
@@ -505,7 +524,11 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
                                                         <option value="15">15 Day</option>
                                                     </select>
                                                     <div className="bg-gray-700 rounded p-1 flex items-center justify-between">
-                                                        <NpcExpirationDisplay expiration={slot.npc.expiration} simulatedTime={simulatedTime} />
+                                                        <NpcExpirationDisplay 
+                                                            expiration={slot.npc.expiration} 
+                                                            simulatedTime={simulatedTime} 
+                                                            remainingDurationMs={slot.npc.remainingDurationMs} 
+                                                        />
                                                         <button onClick={() => setExpirationInputSlot({houseId: house.id, slotIndex: i})} className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold">Set</button>
                                                     </div>
                                                     <div>

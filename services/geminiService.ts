@@ -153,6 +153,7 @@ const calculateActualWeeklyFinances = (
             }
 
             // 2. Calculate Expenses
+            // Ignore PAUSED NPCs (those without an expiration date)
             if (slot.npc.expiration) {
                 const expirationTime = new Date(slot.npc.expiration).getTime();
                 if (expirationTime > now && expirationTime <= endOfWeek) {
@@ -203,7 +204,7 @@ export const generateDailyBriefing = (
         [NpcType.F]: 'f-pet-stock',
         [NpcType.E]: 'e-pet-wip', // E-NPC needs E-Pet
         [NpcType.D]: 'd-pet-wip',
-        [NpcType.C]: 'c-pet-wip',
+        [NpcType.C]: 'c-pet-wip', // C-NPC needs C-Pet (Created by upgrading D)
         [NpcType.B]: 'b-pet-wip',
         [NpcType.A]: 'a-pet-wip',
     };
@@ -242,7 +243,6 @@ export const generateDailyBriefing = (
 
                     // 1. INPUT Calculation (Chain of Custody)
                     if (slot.slotIndex === 0) {
-                        // For C-NPC, we need C-Pet, etc.
                         const itemId = inputMap[currentNpcType];
                         const itemName = inputNameMap[currentNpcType];
                         if (itemId) {
@@ -297,9 +297,7 @@ export const generateDailyBriefing = (
                             const isTargetOccupied = !!targetSlot.pet.startTime; // Simple check: Does it have a pet?
                             
                             // Check if target is being cleared in THIS batch (only works for Linked/Same-House batches)
-                            // For cross-house (Virtual), we always assume blocked if occupied because batches are per-house.
                             let isTargetBeingCleared = false;
-                            
                             if (potentialTargetHouseId === h.id) {
                                 isTargetBeingCleared = finishedSlotsInHouse.some(s => s.slotIndex === potentialTargetSlotIndex);
                             }
@@ -396,6 +394,7 @@ export const generateDashboardAnalytics = (
     // NPC expiration alerts
     houses.forEach(house => {
         house.slots.forEach(slot => {
+            // Only alert if NPC is active (has expiration)
             if (slot.npc.type && slot.npc.expiration) {
                 const expirationDate = new Date(slot.npc.expiration);
                 if (expirationDate > now && expirationDate <= twentyFourHoursFromNow) {
