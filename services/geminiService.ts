@@ -1,7 +1,7 @@
 
 import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division, DashboardAnalytics, VirtualHouse } from "../types";
 
-// Calculates the THEORETICAL MAXIMUM throughput of the current layout using Sink Detection
+// Calculates the THEORETICAL MAXIMUM throughput and ACTUAL UTILIZATION-BASED EXPENSES
 const calculateProjectedProfit = (
     houses: House[],
     cycleTimes: CycleTime[],
@@ -15,100 +15,203 @@ const calculateProjectedProfit = (
     }
 
     const avgHoursBetweenCheckins = 24 / checkinCount;
-    const avgIdleTime = avgHoursBetweenCheckins / 2;
+    const avgIdleTime = avgHoursBetweenCheckins / 2; // Conservative estimate of idle time per cycle
 
-    // 1. Identify Sinks (Terminal Nodes) in the factory graph
-    // A Sink is a slot where a pet finishes and is NOT moved to another slot automatically.
-    const sinks: NpcType[] = [];
+    // --- GRAPH CONSTRUCTION ---
+    // We need to group slots into "Production Chains" to determine the bottleneck of each chain.
+    // The bottleneck determines the throughput of the whole chain.
+    // Upstream slots only need to run fast enough to feed the bottleneck (Utilization < 100%).
 
+    type NodeId = string; // "${houseId}-${slotIndex}"
+    const getNodeId = (hId: number, sIdx: number) => `${hId}-${sIdx}`;
+    
+    interface GraphNode {
+        id: NodeId;
+        houseId: number;
+        slotIndex: number;
+        npcType: NpcType;
+        cycleTime: number;
+        duration: number; // 7 or 15
+        nextNodes: NodeId[];
+    }
+
+    const nodes: Map<NodeId, GraphNode> = new Map();
+    const allNodeIds: Set<NodeId> = new Set();
+
+    // 1. Build Nodes and Edges
     houses.forEach(h => {
         h.slots.forEach((slot, i) => {
-            if (!slot.npc.type) return;
+            if (!slot.npc.type || !slot.npc.duration) return;
 
-            let isSink = false;
+            const id = getNodeId(h.id, i);
+            allNodeIds.add(id);
+            
+            const cycleDef = cycleTimes.find(c => c.npcType === slot.npc.type);
+            const cycleTime = cycleDef ? cycleDef.time : 24;
 
+            const node: GraphNode = {
+                id,
+                houseId: h.id,
+                slotIndex: i,
+                npcType: slot.npc.type,
+                cycleTime,
+                duration: slot.npc.duration,
+                nextNodes: []
+            };
+
+            // Determine connection
             if (slot.npc.mode === 'LINKED') {
-                // Linked: It's a sink if it's the last slot OR the next slot is empty
-                if (i === 2) isSink = true;
-                else if (!h.slots[i + 1].npc.type) isSink = true;
-            } else if (slot.npc.mode === 'SOLO') {
-                if (!slot.npc.virtualHouseId) {
-                    // Solo & Unassigned: It's a sink (Harvest to Warehouse)
-                    isSink = true;
-                } else {
-                    // Solo & Virtual: It's a sink if it's the last slot in the Virtual Chain
-                    const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
-                    if (vHouse) {
-                        const vIndex = vHouse.slots.findIndex(s => s.houseId === h.id && s.slotIndex === i);
-                        if (vIndex === vHouse.slots.length - 1) isSink = true;
-                    } else {
-                        // Fallback if VH missing
-                        isSink = true;
+                // Connect to next slot in same house if it exists and has an NPC
+                if (i < h.slots.length - 1 && h.slots[i+1].npc.type) {
+                    node.nextNodes.push(getNodeId(h.id, i + 1));
+                }
+            } else if (slot.npc.mode === 'SOLO' && slot.npc.virtualHouseId) {
+                // Connect to next slot in Virtual House
+                const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
+                if (vHouse) {
+                    const vIndex = vHouse.slots.findIndex(s => s.houseId === h.id && s.slotIndex === i);
+                    if (vIndex !== -1 && vIndex < vHouse.slots.length - 1) {
+                        const nextS = vHouse.slots[vIndex + 1];
+                        const nextHouse = houses.find(hx => hx.id === nextS.houseId);
+                        // Only connect if next slot actually has an NPC setup
+                        if (nextHouse?.slots[nextS.slotIndex].npc.type) {
+                            node.nextNodes.push(getNodeId(nextS.houseId, nextS.slotIndex));
+                        }
                     }
                 }
             }
 
-            if (isSink) {
-                sinks.push(slot.npc.type);
-            }
+            nodes.set(id, node);
         });
     });
 
-    // 2. Calculate Revenue based on Sinks
-    // In a pipeline, throughput is determined by the Cycle Time of the Sink (the last machine),
-    // NOT the sum of the whole chain.
+    // 2. Find Connected Components (Chains)
+    const visited = new Set<NodeId>();
+    const chains: GraphNode[][] = [];
+
+    for (const nodeId of allNodeIds) {
+        if (!visited.has(nodeId)) {
+            const chain: GraphNode[] = [];
+            const queue = [nodeId];
+            visited.add(nodeId);
+            
+            // BFS/DFS to find all nodes in this undirected component
+            // Note: Our graph is directed, but for grouping a production line, we treat it as undirected connection
+            // We need a bi-directional lookup for grouping, or just iterate and merge.
+            // Simpler approach: Iterate structure logic again for grouping or use Union-Find.
+            // Let's use a simple flood fill on the directed graph + searching for parents.
+            // ACTUALLY: A simpler heuristic for this specific game:
+            // A Chain is defined by the SINK. We find Sinks, then walk backwards?
+            // No, Virtual Houses can be complex.
+            // Let's stick to Union-Find for robust grouping.
+        }
+    }
+
+    // Implementation of Union-Find for grouping
+    const parent = new Map<NodeId, NodeId>();
+    for (const id of allNodeIds) parent.set(id, id);
     
-    // Map Sink NPC Type -> Produced Pet Type
-    const OUTPUT_MAP: Record<string, NpcType> = {
-        [NpcType.A]: NpcType.S,
-        [NpcType.B]: NpcType.A,
-        [NpcType.C]: NpcType.B,
-        [NpcType.D]: NpcType.C,
-        [NpcType.E]: NpcType.D,
-        [NpcType.F]: NpcType.E, 
+    const find = (i: NodeId): NodeId => {
+        if (parent.get(i) === i) return i;
+        const root = find(parent.get(i)!);
+        parent.set(i, root);
+        return root;
     };
     
-    let grossRevenue = 0;
-    let grossRevenueAlternativeA = 0;
-    let sPetsCount = 0; 
-    const producedItemsMap: Record<string, number> = {};
+    const union = (i: NodeId, j: NodeId) => {
+        const rootI = find(i);
+        const rootJ = find(j);
+        if (rootI !== rootJ) parent.set(rootI, rootJ);
+    };
 
-    sinks.forEach(sinkType => {
-        const producedType = OUTPUT_MAP[sinkType] || NpcType.S;
-        
-        // Use the actual cycle time of the terminal NPC
-        const cycleDef = cycleTimes.find(c => c.npcType === sinkType);
-        const cycleTime = cycleDef ? cycleDef.time : 24; 
-        
-        const throughputPerWeek = (24 * 7) / (cycleTime + avgIdleTime);
-
-        const price = prices.petPrices[producedType] || 0;
-        grossRevenue += throughputPerWeek * price;
-
-        if (producedType === NpcType.S) {
-            const aPrice = prices.petPrices[NpcType.A] || 0;
-            grossRevenueAlternativeA += throughputPerWeek * aPrice;
-            sPetsCount += throughputPerWeek;
-        }
-
-        const label = `${producedType}-Pets`;
-        producedItemsMap[label] = (producedItemsMap[label] || 0) + throughputPerWeek;
+    nodes.forEach(node => {
+        node.nextNodes.forEach(nextId => {
+            if (nodes.has(nextId)) union(node.id, nextId);
+        });
     });
 
-    // 3. Calculate Expenses (All Active Slots)
+    // Group nodes by root
+    const groupedChains: Map<NodeId, GraphNode[]> = new Map();
+    nodes.forEach(node => {
+        const root = find(node.id);
+        if (!groupedChains.has(root)) groupedChains.set(root, []);
+        groupedChains.get(root)!.push(node);
+    });
+
+    // 3. Calculate Metrics for each Chain
+    
+    const OUTPUT_MAP: Record<string, NpcType> = {
+        [NpcType.A]: NpcType.S, [NpcType.B]: NpcType.A, [NpcType.C]: NpcType.B,
+        [NpcType.D]: NpcType.C, [NpcType.E]: NpcType.D, [NpcType.F]: NpcType.E, 
+    };
+
+    let grossRevenue = 0;
+    let grossRevenueAlternativeA = 0;
     let npcExpenses = 0;
-    houses.forEach(h => h.slots.forEach(s => {
-        if (s.npc.type && s.npc.duration) {
-            const cost = s.npc.duration === 7 ? prices.npcCost7Day : prices.npcCost15Day;
-            npcExpenses += (cost / s.npc.duration) * 7;
-        }
-    }));
+    let sPetsCount = 0;
+    const producedItemsMap: Record<string, number> = {};
+
+    groupedChains.forEach(chainNodes => {
+        // A. Find Bottleneck (Slowest Cycle Time in the chain)
+        // The chain can only move as fast as its slowest link.
+        // We incorporate user check-in intervals into the effective cycle time of the bottleneck.
+        let maxRawCycleTime = 0;
+        chainNodes.forEach(n => {
+            if (n.cycleTime > maxRawCycleTime) maxRawCycleTime = n.cycleTime;
+        });
+        
+        // Effective Bottleneck Time includes the idle time (waiting for player)
+        const bottleneckEffectiveTime = maxRawCycleTime + avgIdleTime;
+
+        // B. Throughput (Items per week)
+        const throughput = (24 * 7) / bottleneckEffectiveTime;
+
+        // C. Identify Sinks (Revenue Generators)
+        // A node is a sink if it has no outgoing connections within the chain
+        chainNodes.forEach(node => {
+            if (node.nextNodes.length === 0) {
+                // This is a terminal node for this chain. Calculate Revenue.
+                const producedType = OUTPUT_MAP[node.npcType] || NpcType.S;
+                const price = prices.petPrices[producedType] || 0;
+                
+                grossRevenue += throughput * price;
+
+                const label = `${producedType}-Pets`;
+                producedItemsMap[label] = (producedItemsMap[label] || 0) + throughput;
+
+                if (producedType === NpcType.S) {
+                    const aPrice = prices.petPrices[NpcType.A] || 0;
+                    grossRevenueAlternativeA += throughput * aPrice;
+                    sPetsCount += throughput;
+                }
+            }
+        });
+
+        // D. Calculate Expenses based on Utilization
+        // Utilization = Node Cycle Time / Bottleneck Cycle Time
+        // If Node takes 10h and Bottleneck takes 50h, Node is utilized 20% (0.2).
+        // It is "Paused" the rest of the time.
+        chainNodes.forEach(node => {
+            // We use raw cycle times for ratio, assuming perfect synchronization relative to check-ins
+            // Or we can assume the idle time distributes. Raw ratio is safer for "Running Time" cost.
+            // Cost is based on 7-day or 15-day duration running down.
+            // If utilized 20%, the 15-day duration lasts 5x longer in real time? 
+            // NO. In game, you remove the NPC.
+            // So, Expense = (Weekly Cost of NPC) * Utilization %
+            
+            const utilization = Math.min(1, node.cycleTime / maxRawCycleTime);
+            
+            const baseWeeklyCost = (node.duration === 7 ? prices.npcCost7Day : prices.npcCost15Day) * (7 / node.duration);
+            
+            // Adjusted expense
+            npcExpenses += baseWeeklyCost * utilization;
+        });
+    });
 
     const hasChampionHouse = houses.some(h => h.division === Division.CHAMPION);
     const perfectionExpenses = hasChampionHouse ? (sPetsCount * (prices.petPrices[NpcType.S] || 0)) : 0; 
 
     const netProfit = grossRevenue - npcExpenses - perfectionExpenses;
-
     const producedItems = Object.entries(producedItemsMap).map(([name, count]) => ({ name, count }));
 
     return { grossRevenue, grossRevenueAlternativeA: grossRevenueAlternativeA || undefined, npcExpenses, perfectionExpenses, netProfit, sPetsCount, producedItems };
