@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot, CompletedTaskLog, VirtualHouse } from './types';
 import { CYCLE_TIMES, INITIAL_APP_STATE } from './constants';
@@ -305,23 +306,29 @@ const App: React.FC = () => {
   
   const handleSellPets = useCallback((petType: NpcType, quantity: number, pricePerUnit: number) => {
     setAppState(prev => {
-      let newCollectedPets = [...prev.collectedPets];
-      let newWarehouseItems = [...prev.warehouseItems];
+      // Strict immutability: Clone arrays completely
+      let newCollectedPets = prev.collectedPets.map(item => ({ ...item }));
+      let newWarehouseItems = prev.warehouseItems.map(item => ({ ...item }));
       
       // Logic to deduct pets
       let remainingToSell = quantity;
 
       // 1. Try Collected Pets first (Mainly S-Pets)
-      const existingCollected = newCollectedPets.find(p => p.petType === petType);
-      if (existingCollected) {
+      const existingCollectedIndex = newCollectedPets.findIndex(p => p.petType === petType);
+      if (existingCollectedIndex !== -1) {
+          const existingCollected = newCollectedPets[existingCollectedIndex];
           const sellAmount = Math.min(remainingToSell, existingCollected.quantity);
           if (sellAmount > 0) {
-              newCollectedPets = newCollectedPets.map(p => 
-                  p.petType === petType ? { ...p, quantity: p.quantity - sellAmount } : p
-              ).filter(p => p.quantity > 0);
+              newCollectedPets[existingCollectedIndex] = { 
+                  ...existingCollected, 
+                  quantity: existingCollected.quantity - sellAmount 
+              };
               remainingToSell -= sellAmount;
           }
       }
+      // Filter out zero quantity collected pets
+      newCollectedPets = newCollectedPets.filter(p => p.quantity > 0);
+
 
       // 2. If still need to sell, check Warehouse (WIP)
       if (remainingToSell > 0) {
@@ -335,37 +342,43 @@ const App: React.FC = () => {
           };
           const wipId = wipMap[petType];
           if (wipId) {
-              const wipItem = newWarehouseItems.find(i => i.id === wipId);
-              if (wipItem && wipItem.currentStock > 0) {
-                  const sellAmount = Math.min(remainingToSell, wipItem.currentStock);
-                  if (sellAmount > 0) {
-                       // Immutable update for warehouse item
-                       newWarehouseItems = newWarehouseItems.map(i => 
-                           i.id === wipId ? { ...i, currentStock: i.currentStock - sellAmount } : i
-                       );
-                       remainingToSell -= sellAmount;
-                   }
+              const wipIndex = newWarehouseItems.findIndex(i => i.id === wipId);
+              if (wipIndex !== -1) {
+                  const wipItem = newWarehouseItems[wipIndex];
+                  if (wipItem.currentStock > 0) {
+                      const sellAmount = Math.min(remainingToSell, wipItem.currentStock);
+                      if (sellAmount > 0) {
+                           newWarehouseItems[wipIndex] = {
+                               ...wipItem,
+                               currentStock: wipItem.currentStock - sellAmount
+                           };
+                           remainingToSell -= sellAmount;
+                       }
+                  }
               }
           }
       }
 
       // 3. Special Case: F-Pets can also be in "Stock"
       if (remainingToSell > 0 && petType === NpcType.F) {
-           const stockItem = newWarehouseItems.find(i => i.id === 'f-pet-stock');
-           if (stockItem && stockItem.currentStock > 0) {
-               const sellAmount = Math.min(remainingToSell, stockItem.currentStock);
-               if (sellAmount > 0) {
-                   // Immutable update for stock item
-                   newWarehouseItems = newWarehouseItems.map(i => 
-                       i.id === 'f-pet-stock' ? { ...i, currentStock: i.currentStock - sellAmount } : i
-                   );
-                   remainingToSell -= sellAmount;
+           const stockIndex = newWarehouseItems.findIndex(i => i.id === 'f-pet-stock');
+           if (stockIndex !== -1) {
+               const stockItem = newWarehouseItems[stockIndex];
+               if (stockItem.currentStock > 0) {
+                   const sellAmount = Math.min(remainingToSell, stockItem.currentStock);
+                   if (sellAmount > 0) {
+                       newWarehouseItems[stockIndex] = {
+                           ...stockItem,
+                           currentStock: stockItem.currentStock - sellAmount
+                       };
+                       remainingToSell -= sellAmount;
+                   }
                }
            }
       }
 
       if (remainingToSell > 0) {
-          console.error("Tried to sell more than available");
+          console.error("Tried to sell more than available", { requested: quantity, remaining: remainingToSell });
           return prev; 
       }
 
