@@ -241,11 +241,8 @@ export const generateDailyBriefing = (
                     if (slot.pet.finishTime! > maxFinishTime) maxFinishTime = slot.pet.finishTime!;
 
                     // 1. INPUT Calculation (Chain of Custody)
-                    // If we are servicing a slot, we generally need to put something back in.
-                    // For Batched tasks, we assume we are filling empty spots created by harvesting.
-                    // If this is the START of a chain (Slot 1/Index 0, or implicitly if previous slot isn't feeding it in this batch),
-                    // we explicitly ask for input. Since we batch by house, we check if slotIndex 0 is being serviced.
                     if (slot.slotIndex === 0) {
+                        // For C-NPC, we need C-Pet, etc.
                         const itemId = inputMap[currentNpcType];
                         const itemName = inputNameMap[currentNpcType];
                         if (itemId) {
@@ -261,7 +258,10 @@ export const generateDailyBriefing = (
                     let targetSlotIndex: number | undefined;
                     let virtualHouseName: string | undefined;
 
-                    // SOLO / Virtual Logic
+                    // Determine intended target
+                    let potentialTargetHouseId: number | undefined;
+                    let potentialTargetSlotIndex: number | undefined;
+
                     if (mode === 'SOLO') {
                         if (slot.npc.virtualHouseId) {
                             const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
@@ -270,34 +270,57 @@ export const generateDailyBriefing = (
                                 const currentVIndex = vHouse.slots.findIndex(s => s.houseId === h.id && s.slotIndex === slot.slotIndex);
                                 if (currentVIndex !== -1 && currentVIndex < vHouse.slots.length - 1) {
                                     const nextVSlot = vHouse.slots[currentVIndex + 1];
-                                    targetHouseId = nextVSlot.houseId;
-                                    targetSlotIndex = nextVSlot.slotIndex;
-                                    // Logic: Harvest Current, Upgrade to Next, Place in Next Slot
-                                } else {
-                                    // End of Virtual Chain -> Harvest, Upgrade, Store
-                                    actionType = currentRankIndex === npcRankOrder.length - 1 ? 'COLLECT_S' : 'HARVEST_UPGRADE_AND_STORE';
+                                    potentialTargetHouseId = nextVSlot.houseId;
+                                    potentialTargetSlotIndex = nextVSlot.slotIndex;
                                 }
-                            } else {
-                                actionType = 'HARVEST_UPGRADE_AND_STORE'; // Broken VH
                             }
-                        } else {
-                            // Solo & Unassigned -> Harvest, Upgrade, Store
-                             actionType = currentRankIndex === npcRankOrder.length - 1 ? 'COLLECT_S' : 'HARVEST_UPGRADE_AND_STORE';
+                        }
+                    } else {
+                        // LINKED
+                        if (currentRankIndex < npcRankOrder.length - 1) {
+                            const targetSlotIdx = h.slots.findIndex(s => s.npc.type === nextRank);
+                            if (targetSlotIdx !== -1) {
+                                potentialTargetHouseId = h.id;
+                                potentialTargetSlotIndex = targetSlotIdx;
+                            }
                         }
                     }
-                    // LINKED Logic
-                    else {
+
+                    // 3. TRAFFIC CONTROL: Check if potential target is blocked
+                    // If there is a target, but it is occupied AND not being harvested in this batch,
+                    // we must degrade the action to "Store".
+                    if (potentialTargetHouseId !== undefined && potentialTargetSlotIndex !== undefined) {
+                        const targetHouse = houses.find(house => house.id === potentialTargetHouseId);
+                        const targetSlot = targetHouse?.slots[potentialTargetSlotIndex];
+                        
+                        if (targetSlot) {
+                            const isTargetOccupied = !!targetSlot.pet.startTime; // Simple check: Does it have a pet?
+                            
+                            // Check if target is being cleared in THIS batch (only works for Linked/Same-House batches)
+                            // For cross-house (Virtual), we always assume blocked if occupied because batches are per-house.
+                            let isTargetBeingCleared = false;
+                            
+                            if (potentialTargetHouseId === h.id) {
+                                isTargetBeingCleared = finishedSlotsInHouse.some(s => s.slotIndex === potentialTargetSlotIndex);
+                            }
+
+                            if (isTargetOccupied && !isTargetBeingCleared) {
+                                // Blocked! Force Store.
+                                actionType = 'HARVEST_UPGRADE_AND_STORE';
+                            } else {
+                                // Path clear.
+                                targetHouseId = potentialTargetHouseId;
+                                targetSlotIndex = potentialTargetSlotIndex;
+                            }
+                        } else {
+                             actionType = 'HARVEST_UPGRADE_AND_STORE'; // Target slot doesn't exist
+                        }
+                    } else {
+                        // No target (End of Chain)
                         if (currentRankIndex === npcRankOrder.length - 1) {
                              actionType = 'COLLECT_S';
                         } else {
-                            const targetSlotIdx = h.slots.findIndex(s => s.npc.type === nextRank);
-                            if (targetSlotIdx !== -1) {
-                                targetHouseId = h.id;
-                                targetSlotIndex = targetSlotIdx;
-                            } else {
-                                // Broken Link (No next slot found in house) -> Harvest, Upgrade, Store
-                                actionType = 'HARVEST_UPGRADE_AND_STORE'; 
-                            }
+                             actionType = 'HARVEST_UPGRADE_AND_STORE';
                         }
                     }
 
