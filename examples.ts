@@ -1,3 +1,4 @@
+
 import { House, WarehouseItem, CollectedPet, SaleRecord, Division, NpcType } from './types';
 
 const createPet = (npcType: NpcType, hoursAgo: number, totalHours: number) => {
@@ -6,10 +7,11 @@ const createPet = (npcType: NpcType, hoursAgo: number, totalHours: number) => {
     return { name: `${npcType}-Pet`, startTime, finishTime };
 };
 
-const createNpc = (type: NpcType, duration: 7 | 15 = 15) => {
+const createNpc = (type: NpcType, duration: 7 | 15 = 15, daysRemaining?: number) => {
     const expirationDate = new Date();
-    expirationDate.setDate(expirationDate.getDate() + duration);
-    return { type, expiration: expirationDate.toISOString().split('T')[0], duration, mode: 'LINKED' as const };
+    const remaining = daysRemaining !== undefined ? daysRemaining : duration;
+    expirationDate.setDate(expirationDate.getDate() + remaining);
+    return { type, expiration: expirationDate.toISOString(), duration, mode: 'LINKED' as const };
 };
 
 
@@ -21,9 +23,9 @@ export const getExample2House = () => ({
             label: 'House #1',
             perfectionAttempts: 0,
             slots: [
-                { npc: createNpc(NpcType.F), pet: createPet(NpcType.F, 2, 10) },
-                { npc: createNpc(NpcType.E), pet: createPet(NpcType.E, 15, 20) },
-                { npc: createNpc(NpcType.D), pet: createPet(NpcType.D, 40, 50) },
+                { npc: createNpc(NpcType.F, 15, 3), pet: createPet(NpcType.F, 2, 10) },
+                { npc: createNpc(NpcType.E, 15, 12), pet: createPet(NpcType.E, 15, 20) },
+                { npc: createNpc(NpcType.D, 15, 1), pet: createPet(NpcType.D, 40, 50) },
             ],
         },
         {
@@ -31,19 +33,20 @@ export const getExample2House = () => ({
             label: 'House #2',
             perfectionAttempts: 0,
             slots: [
-                { npc: createNpc(NpcType.C), pet: createPet(NpcType.C, 10, 50) },
-                { npc: createNpc(NpcType.B), pet: createPet(NpcType.B, 60, 75) },
-                { npc: createNpc(NpcType.A), pet: createPet(NpcType.A, 100, 250) },
+                { npc: createNpc(NpcType.C, 15, 5), pet: createPet(NpcType.C, 10, 50) },
+                { npc: createNpc(NpcType.B, 15, 10), pet: createPet(NpcType.B, 60, 75) },
+                { npc: createNpc(NpcType.A, 15, 2), pet: createPet(NpcType.A, 100, 250) },
             ],
         },
     ],
     warehouseItems: [
         { id: 'f-pet-stock', name: 'F-Pet Stock (Purchased)', currentStock: 20, safetyStockLevel: 10, isPurchaseOnly: true },
-        { id: 'e-pet-wip', name: 'E-Pets (Awaiting E-NPC)', currentStock: 2, safetyStockLevel: 0 },
-        { id: 'd-pet-wip', name: 'D-Pets (Awaiting D-NPC)', currentStock: 1, safetyStockLevel: 0 },
-        { id: 'c-pet-wip', name: 'C-Pets (Awaiting C-NPC)', currentStock: 1, safetyStockLevel: 0 },
-        { id: 'b-pet-wip', name: 'B-Pets (Awaiting B-NPC)', currentStock: 0, safetyStockLevel: 0 },
-        { id: 'a-pet-wip', name: 'A-Pets (Awaiting A-NPC)', currentStock: 0, safetyStockLevel: 0 },
+        { id: 'f-pet-wip', name: 'F-Pets (From Solo F-Slots)', currentStock: 0, safetyStockLevel: 0 },
+        { id: 'e-pet-wip', name: 'E-Pets (Ready for E-NPC)', currentStock: 2, safetyStockLevel: 0 },
+        { id: 'd-pet-wip', name: 'D-Pets (Ready for D-NPC)', currentStock: 1, safetyStockLevel: 0 },
+        { id: 'c-pet-wip', name: 'C-Pets (Ready for C-NPC)', currentStock: 1, safetyStockLevel: 0 },
+        { id: 'b-pet-wip', name: 'B-Pets (Ready for B-NPC)', currentStock: 0, safetyStockLevel: 0 },
+        { id: 'a-pet-wip', name: 'A-Pets (Ready for A-NPC)', currentStock: 0, safetyStockLevel: 0 },
     ],
     cashBalance: 250000000,
     collectedPets: [],
@@ -61,9 +64,9 @@ const generate13HousePod = (idStart: number) => {
             label: `House #${id}`,
             perfectionAttempts: 0,
             slots: [
-                { npc: createNpc(NpcType.D), pet: createPet(NpcType.D, 5 + i * 4, 50) },
-                { npc: createNpc(NpcType.C), pet: createPet(NpcType.C, 15 + i * 3, 50) },
-                { npc: createNpc(NpcType.B), pet: createPet(NpcType.B, 25 + i * 5, 75) },
+                { npc: createNpc(NpcType.D, 15, (i % 14) + 1), pet: createPet(NpcType.D, 5 + i * 4, 50) },
+                { npc: createNpc(NpcType.C, 15, ((i + 5) % 14) + 1), pet: createPet(NpcType.C, 15 + i * 3, 50) },
+                { npc: createNpc(NpcType.B, 15, ((i + 10) % 14) + 1), pet: createPet(NpcType.B, 25 + i * 5, 75) },
             ],
         });
     }
@@ -81,9 +84,9 @@ const generate13HousePod = (idStart: number) => {
             label: `House #${id}`,
             perfectionAttempts: 0,
             slots: [
-                { npc: createNpc(nurseryNpcs[i][0]), pet: createPet(nurseryNpcs[i][0], 1 + i, 10) },
-                { npc: createNpc(nurseryNpcs[i][1]), pet: createPet(nurseryNpcs[i][1], 10 + i, 20) },
-                { npc: createNpc(nurseryNpcs[i][2]), pet: createPet(nurseryNpcs[i][2], 30 + i * 2, nurseryNpcs[i][2] === NpcType.A ? 250 : 50) },
+                { npc: createNpc(nurseryNpcs[i][0], 15, (i % 14) + 1), pet: createPet(nurseryNpcs[i][0], 1 + i, 10) },
+                { npc: createNpc(nurseryNpcs[i][1], 15, ((i + 4) % 14) + 1), pet: createPet(nurseryNpcs[i][1], 10 + i, 20) },
+                { npc: createNpc(nurseryNpcs[i][2], 15, ((i + 8) % 14) + 1), pet: createPet(nurseryNpcs[i][2], 30 + i * 2, nurseryNpcs[i][2] === NpcType.A ? 250 : 50) },
             ],
         });
     }
@@ -94,11 +97,12 @@ export const getExample13House = () => ({
     houses: generate13HousePod(1),
      warehouseItems: [
         { id: 'f-pet-stock', name: 'F-Pet Stock (Purchased)', currentStock: 50, safetyStockLevel: 25, isPurchaseOnly: true },
-        { id: 'e-pet-wip', name: 'E-Pets (Awaiting E-NPC)', currentStock: 10, safetyStockLevel: 0 },
-        { id: 'd-pet-wip', name: 'D-Pets (Awaiting D-NPC)', currentStock: 5, safetyStockLevel: 0 },
-        { id: 'c-pet-wip', name: 'C-Pets (Awaiting C-NPC)', currentStock: 5, safetyStockLevel: 0 },
-        { id: 'b-pet-wip', name: 'B-Pets (Awaiting B-NPC)', currentStock: 2, safetyStockLevel: 0 },
-        { id: 'a-pet-wip', name: 'A-Pets (Awaiting A-NPC)', currentStock: 1, safetyStockLevel: 0 },
+        { id: 'f-pet-wip', name: 'F-Pets (From Solo F-Slots)', currentStock: 0, safetyStockLevel: 0 },
+        { id: 'e-pet-wip', name: 'E-Pets (Ready for E-NPC)', currentStock: 10, safetyStockLevel: 0 },
+        { id: 'd-pet-wip', name: 'D-Pets (Ready for D-NPC)', currentStock: 5, safetyStockLevel: 0 },
+        { id: 'c-pet-wip', name: 'C-Pets (Ready for C-NPC)', currentStock: 5, safetyStockLevel: 0 },
+        { id: 'b-pet-wip', name: 'B-Pets (Ready for B-NPC)', currentStock: 2, safetyStockLevel: 0 },
+        { id: 'a-pet-wip', name: 'A-Pets (Ready for A-NPC)', currentStock: 1, safetyStockLevel: 0 },
     ],
     cashBalance: 1130000000,
     collectedPets: [{petType: NpcType.S, quantity: 5}],
@@ -126,9 +130,9 @@ const generate71HouseBehemoth = () => {
         label: 'House #1',
         perfectionAttempts: 0,
         slots: [
-            { npc: createNpc(NpcType.F), pet: createPet(NpcType.F, 3, 10) },
-            { npc: createNpc(NpcType.E), pet: {name: null, startTime: null, finishTime: null} },
-            { npc: createNpc(NpcType.D), pet: {name: null, startTime: null, finishTime: null} },
+            { npc: createNpc(NpcType.F, 15, 2), pet: createPet(NpcType.F, 3, 10) },
+            { npc: createNpc(NpcType.E, 15, 8), pet: {name: null, startTime: null, finishTime: null} },
+            { npc: createNpc(NpcType.D, 15, 14), pet: {name: null, startTime: null, finishTime: null} },
         ]
     });
     // 20 Armory Houses (Mid-grade fodder)
@@ -139,9 +143,9 @@ const generate71HouseBehemoth = () => {
             label: `House #${id}`,
             perfectionAttempts: 0,
             slots: [
-                { npc: createNpc(NpcType.F), pet: createPet(NpcType.F, i % 10, 10) },
-                { npc: createNpc(NpcType.E), pet: createPet(NpcType.E, 10 + (i % 10), 20) },
-                { npc: createNpc(NpcType.D), pet: createPet(NpcType.D, 30 + (i % 10), 50) },
+                { npc: createNpc(NpcType.F, 15, (i % 14) + 1), pet: createPet(NpcType.F, i % 10, 10) },
+                { npc: createNpc(NpcType.E, 15, ((i+5) % 14) + 1), pet: createPet(NpcType.E, 10 + (i % 10), 20) },
+                { npc: createNpc(NpcType.D, 15, ((i+10) % 14) + 1), pet: createPet(NpcType.D, 30 + (i % 10), 50) },
             ]
         });
     }
@@ -153,9 +157,9 @@ const generate71HouseBehemoth = () => {
             label: `House #${id}`,
             perfectionAttempts: 0,
             slots: [
-                { npc: createNpc(NpcType.C), pet: createPet(NpcType.C, 20 + i * 2, 50) },
-                { npc: createNpc(NpcType.B), pet: createPet(NpcType.B, 50 + i * 3, 75) },
-                { npc: createNpc(NpcType.A), pet: createPet(NpcType.A, 100 + i * 4, 250) },
+                { npc: createNpc(NpcType.C, 15, (i % 14) + 1), pet: createPet(NpcType.C, 20 + i * 2, 50) },
+                { npc: createNpc(NpcType.B, 15, ((i+5) % 14) + 1), pet: createPet(NpcType.B, 50 + i * 3, 75) },
+                { npc: createNpc(NpcType.A, 15, ((i+10) % 14) + 1), pet: createPet(NpcType.A, 100 + i * 4, 250) },
             ]
         });
     }
@@ -166,11 +170,12 @@ export const getExample71House = () => ({
     houses: generate71HouseBehemoth(),
     warehouseItems: [
         { id: 'f-pet-stock', name: 'F-Pet Stock (Purchased)', currentStock: 200, safetyStockLevel: 100, isPurchaseOnly: true },
-        { id: 'e-pet-wip', name: 'E-Pets (Awaiting E-NPC)', currentStock: 25, safetyStockLevel: 0 },
-        { id: 'd-pet-wip', name: 'D-Pets (Awaiting D-NPC)', currentStock: 15, safetyStockLevel: 0 },
-        { id: 'c-pet-wip', name: 'C-Pets (Awaiting C-NPC)', currentStock: 10, safetyStockLevel: 0 },
-        { id: 'b-pet-wip', name: 'B-Pets (Awaiting B-NPC)', currentStock: 5, safetyStockLevel: 0 },
-        { id: 'a-pet-wip', name: 'A-Pets (Awaiting A-NPC)', currentStock: 5, safetyStockLevel: 0 },
+        { id: 'f-pet-wip', name: 'F-Pets (From Solo F-Slots)', currentStock: 0, safetyStockLevel: 0 },
+        { id: 'e-pet-wip', name: 'E-Pets (Ready for E-NPC)', currentStock: 25, safetyStockLevel: 0 },
+        { id: 'd-pet-wip', name: 'D-Pets (Ready for D-NPC)', currentStock: 15, safetyStockLevel: 0 },
+        { id: 'c-pet-wip', name: 'C-Pets (Ready for C-NPC)', currentStock: 10, safetyStockLevel: 0 },
+        { id: 'b-pet-wip', name: 'B-Pets (Ready for B-NPC)', currentStock: 5, safetyStockLevel: 0 },
+        { id: 'a-pet-wip', name: 'A-Pets (Ready for A-NPC)', currentStock: 5, safetyStockLevel: 0 },
     ],
     cashBalance: 5000000000,
     collectedPets: [{petType: NpcType.S, quantity: 20}],

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { House, WarehouseItem, CycleTime, PriceConfig, Division, NpcType, ProjectedProfit, CollectedPet, DashboardAnalytics, VirtualHouse } from '../types';
 import { generateDashboardAnalytics } from '../services/geminiService';
@@ -14,6 +15,7 @@ interface DashboardProps {
   collectedPets: CollectedPet[];
   onPerfectionAttempt: () => void;
   virtualHouses: VirtualHouse[];
+  simulatedTime: number | null;
 }
 
 const EditableCashBalance: React.FC<{ balance: number; onSave: (newBalance: number) => void }> = ({ balance, onSave }) => {
@@ -116,14 +118,14 @@ const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit, title: string, su
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     houses, warehouseItems, cashBalance, setCashBalance, 
-    cycleTimes, prices, checkinTimes, collectedPets, onPerfectionAttempt, virtualHouses
+    cycleTimes, prices, checkinTimes, collectedPets, onPerfectionAttempt, virtualHouses, simulatedTime
 }) => {
     const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
 
     useEffect(() => {
-        const data = generateDashboardAnalytics(houses, warehouseItems, cycleTimes, prices, checkinTimes, virtualHouses);
+        const data = generateDashboardAnalytics(houses, warehouseItems, cycleTimes, prices, checkinTimes, virtualHouses, simulatedTime || undefined);
         setAnalytics(data);
-    }, [houses, warehouseItems, cycleTimes, prices, checkinTimes, virtualHouses]);
+    }, [houses, warehouseItems, cycleTimes, prices, checkinTimes, virtualHouses, simulatedTime]);
 
     const champion = houses.find(h => h.division === Division.CHAMPION); 
     const availableSPets = collectedPets.find(p => p.petType === NpcType.S)?.quantity || 0;

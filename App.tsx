@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { House, NpcType, View, WarehouseItem, PriceConfig, SaleRecord, CollectedPet, Division, AppState, HouseTemplate, NpcSlot, PetSlot, CompletedTaskLog, VirtualHouse } from './types';
 import { CYCLE_TIMES, INITIAL_APP_STATE } from './constants';
@@ -372,6 +373,7 @@ const App: React.FC = () => {
             setCashBalance={setCashBalance} cycleTimes={CYCLE_TIMES} prices={prices}
             checkinTimes={checkinTimes} collectedPets={collectedPets} onPerfectionAttempt={handlePerfectionAttempt}
             virtualHouses={virtualHouses}
+            simulatedTime={simulatedTime}
         />;
       case View.DAILY_BRIEFING:
         return <DailyBriefing 

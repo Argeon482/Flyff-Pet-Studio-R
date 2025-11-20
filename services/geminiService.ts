@@ -201,7 +201,7 @@ export const generateDailyBriefing = (
     const npcRankOrder = [NpcType.F, NpcType.E, NpcType.D, NpcType.C, NpcType.B, NpcType.A];
     const inputMap: Record<string, string> = {
         [NpcType.F]: 'f-pet-stock',
-        [NpcType.E]: 'e-pet-wip',
+        [NpcType.E]: 'e-pet-wip', // E-NPC needs E-Pet
         [NpcType.D]: 'd-pet-wip',
         [NpcType.C]: 'c-pet-wip',
         [NpcType.B]: 'b-pet-wip',
@@ -363,10 +363,11 @@ export const generateDashboardAnalytics = (
     cycleTimes: CycleTime[],
     prices: PriceConfig,
     checkinTimes: number[],
-    virtualHouses: VirtualHouse[]
+    virtualHouses: VirtualHouse[],
+    currentTime?: number
 ): DashboardAnalytics => {
     const alerts: string[] = [];
-    const now = new Date();
+    const now = currentTime ? new Date(currentTime) : new Date();
     const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     // NPC expiration alerts
