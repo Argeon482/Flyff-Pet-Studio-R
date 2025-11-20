@@ -336,10 +336,13 @@ const App: React.FC = () => {
           const wipId = wipMap[petType];
           if (wipId) {
               const wipItem = newWarehouseItems.find(i => i.id === wipId);
-              if (wipItem) {
+              if (wipItem && wipItem.currentStock > 0) {
                   const sellAmount = Math.min(remainingToSell, wipItem.currentStock);
-                   if (sellAmount > 0) {
-                       wipItem.currentStock -= sellAmount;
+                  if (sellAmount > 0) {
+                       // Immutable update for warehouse item
+                       newWarehouseItems = newWarehouseItems.map(i => 
+                           i.id === wipId ? { ...i, currentStock: i.currentStock - sellAmount } : i
+                       );
                        remainingToSell -= sellAmount;
                    }
               }
@@ -349,17 +352,19 @@ const App: React.FC = () => {
       // 3. Special Case: F-Pets can also be in "Stock"
       if (remainingToSell > 0 && petType === NpcType.F) {
            const stockItem = newWarehouseItems.find(i => i.id === 'f-pet-stock');
-           if (stockItem) {
+           if (stockItem && stockItem.currentStock > 0) {
                const sellAmount = Math.min(remainingToSell, stockItem.currentStock);
                if (sellAmount > 0) {
-                   stockItem.currentStock -= sellAmount;
+                   // Immutable update for stock item
+                   newWarehouseItems = newWarehouseItems.map(i => 
+                       i.id === 'f-pet-stock' ? { ...i, currentStock: i.currentStock - sellAmount } : i
+                   );
                    remainingToSell -= sellAmount;
                }
            }
       }
 
       if (remainingToSell > 0) {
-          // Should be prevented by UI, but safety check
           console.error("Tried to sell more than available");
           return prev; 
       }

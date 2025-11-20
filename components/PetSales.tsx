@@ -132,7 +132,7 @@ const PetSales: React.FC<PetSalesProps> = ({ prices, onUpdatePrices, collectedPe
                                     <th className="py-2 text-left text-xs sm:text-sm font-semibold text-gray-300">Type</th>
                                     <th className="py-2 text-left text-xs sm:text-sm font-semibold text-gray-300">Stock</th>
                                     <th className="py-2 text-left text-xs sm:text-sm font-semibold text-gray-300">Value</th>
-                                    <th className="py-2 text-left text-xs sm:text-sm font-semibold text-gray-300">Sell Qty</th>
+                                    <th className="py-2 text-left text-xs sm:text-sm font-semibold text-gray-300">Quantity</th>
                                     <th className="py-2 text-right text-xs sm:text-sm font-semibold text-gray-300">Action</th>
                                 </tr>
                             </thead>
