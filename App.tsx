@@ -336,6 +336,64 @@ const App: React.FC = () => {
       setAppState(prev => ({ ...prev, checkinTimes: times }));
   }, []);
 
+  // Helper to mathematically advance factory state (Renew NPCs, Auto-complete/restart pets)
+  // This simulates perfectly efficient management during the skipped time.
+  const advanceFactoryState = (prevTime: number, newTime: number, state: AppState): AppState => {
+      if (newTime <= prevTime) return state;
+
+      const newHouses = state.houses.map(house => ({
+          ...house,
+          slots: house.slots.map(slot => {
+              let updatedSlot = { ...slot };
+
+              // 1. Handle NPC Renewal
+              // If an NPC expired during the skip, we assume it was immediately replaced.
+              // Logic: Extend expiration until it falls after the newTime.
+              if (updatedSlot.npc.expiration && updatedSlot.npc.duration) {
+                  let currentExpiration = new Date(updatedSlot.npc.expiration).getTime();
+                  if (currentExpiration <= newTime) {
+                      const durationMs = updatedSlot.npc.duration * 24 * 60 * 60 * 1000;
+                      // Advance expiration in increments of duration until it's in the future
+                      while (currentExpiration <= newTime) {
+                          currentExpiration += durationMs;
+                      }
+                      updatedSlot.npc = {
+                          ...updatedSlot.npc,
+                          expiration: new Date(currentExpiration).toISOString()
+                      };
+                  }
+              }
+
+              // 2. Handle Pet Completion & Auto-Restart
+              // If a pet finished during the skip, we assume it was collected and a new one started immediately.
+              // Logic: Shift the finish time forward by N cycle durations so it is running relative to newTime.
+              if (updatedSlot.pet.finishTime && updatedSlot.pet.finishTime <= newTime) {
+                  const cycle = CYCLE_TIMES.find(c => c.npcType === updatedSlot.npc.type);
+                  if (cycle) {
+                      const durationMs = cycle.time * 3600000;
+                      let currentFinish = updatedSlot.pet.finishTime;
+                      
+                      // Shift finish time forward until it is in the future relative to newTime
+                      // This effectively simulates that we collected and restarted the pet N times.
+                      while (currentFinish <= newTime) {
+                          currentFinish += durationMs;
+                      }
+                      
+                      updatedSlot.pet = {
+                          ...updatedSlot.pet,
+                          finishTime: currentFinish,
+                          startTime: currentFinish - durationMs
+                      };
+                  }
+              }
+
+              return updatedSlot;
+          })
+      }));
+
+      return { ...state, houses: newHouses };
+  };
+
   const handleTimeTravel = useCallback((amount: number, unit: 'day' | 'week') => {
     setSimulatedTime(prev => {
       if (prev === null) return null;
@@ -346,42 +404,59 @@ const App: React.FC = () => {
       } else if (unit === 'week') {
         msToAdd = amount * 7 * msInDay;
       }
-      return prev + msToAdd;
+      
+      const newTime = prev + msToAdd;
+      
+      // If moving forward, advance the factory state to prevent everything from expiring
+      if (msToAdd > 0) {
+          setAppState(curr => advanceFactoryState(prev, newTime, curr));
+      }
+      
+      return newTime;
     });
   }, []);
 
   const handleSkipToCheckin = useCallback((direction: 'forward' | 'backward') => {
     if (simulatedTime === null || appState.checkinTimes.length === 0) return;
 
-    const now = new Date(simulatedTime);
-    const sortedCheckinHours = [...appState.checkinTimes].sort((a, b) => a - b);
+    setSimulatedTime(prev => {
+        if (prev === null) return null;
+        const now = new Date(prev);
+        const sortedCheckinHours = [...appState.checkinTimes].sort((a, b) => a - b);
 
-    const checkinDates: Date[] = [];
-    [-2, -1, 0, 1, 2].forEach(dayOffset => {
-        sortedCheckinHours.forEach(hour => {
-            const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, hour, 0, 0, 0);
-            checkinDates.push(date);
+        const checkinDates: Date[] = [];
+        [-2, -1, 0, 1, 2].forEach(dayOffset => {
+            sortedCheckinHours.forEach(hour => {
+                const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset, hour, 0, 0, 0);
+                checkinDates.push(date);
+            });
         });
+
+        let nextTime: number | null = null;
+
+        if (direction === 'forward') {
+            const nextCheckin = checkinDates
+                .sort((a, b) => a.getTime() - b.getTime())
+                .find(time => time.getTime() > now.getTime());
+            
+            if (nextCheckin) nextTime = nextCheckin.getTime();
+        } else { // backward
+            const prevCheckin = checkinDates
+                .sort((a, b) => b.getTime() - a.getTime())
+                .find(time => time.getTime() < now.getTime());
+
+            if (prevCheckin) nextTime = prevCheckin.getTime();
+        }
+
+        if (nextTime !== null) {
+            if (direction === 'forward' && nextTime > prev) {
+                setAppState(curr => advanceFactoryState(prev, nextTime!, curr));
+            }
+            return nextTime;
+        }
+        return prev;
     });
-
-    if (direction === 'forward') {
-        const nextCheckin = checkinDates
-            .sort((a, b) => a.getTime() - b.getTime())
-            .find(time => time.getTime() > now.getTime());
-        
-        if (nextCheckin) {
-            setSimulatedTime(nextCheckin.getTime());
-        }
-    } else { // backward
-        const prevCheckin = checkinDates
-            .sort((a, b) => b.getTime() - a.getTime())
-            .find(time => time.getTime() < now.getTime());
-
-        if (prevCheckin) {
-            setSimulatedTime(prevCheckin.getTime());
-        }
-    }
-  }, [simulatedTime, appState.checkinTimes]);
+  }, [appState.checkinTimes, simulatedTime]); // Added simulatedTime dependency to ensure stability if needed, though setter callback handles prev
 
   const renderView = () => {
     const { houses, warehouseItems, cashBalance, prices, collectedPets, salesHistory, checkinTimes, completedTaskLog, virtualHouses } = appState;

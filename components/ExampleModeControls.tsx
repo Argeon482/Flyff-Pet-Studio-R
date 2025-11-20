@@ -36,25 +36,10 @@ const ExampleModeControls: React.FC<ExampleModeControlsProps> = ({
 
   return (
     <div className="bg-purple-900/95 backdrop-blur-sm text-white py-1 shadow-lg sticky top-16 z-30 border-b border-purple-500/30 w-full overflow-hidden">
-      <div className="w-full px-1 sm:px-2">
-        <div className="flex items-center justify-between gap-1 sm:gap-2">
-          
-          {/* Left: Dropdown */}
-          <div className="flex-shrink-0">
-            <select 
-                className="bg-purple-800 text-white text-[10px] sm:text-xs rounded border border-purple-600 px-1 py-0.5 outline-none focus:ring-1 focus:ring-purple-400 w-24 sm:w-32"
-                onChange={(e) => onSelectScenario(e.target.value)}
-                defaultValue=""
-            >
-                <option value="" disabled>Scenario...</option>
-                {scenarios.map(s => (
-                    <option key={s.key} value={s.key}>{s.label}</option>
-                ))}
-            </select>
-          </div>
-
-          {/* Right: Time Controls */}
-          <div className="flex items-center gap-0.5 sm:gap-1 flex-grow justify-end overflow-x-auto no-scrollbar">
+      <div className="w-full px-1 sm:px-2 flex flex-col gap-1.5">
+        
+         {/* Top Row: Time Controls */}
+          <div className="flex items-center justify-center gap-0.5 sm:gap-1 w-full overflow-x-auto no-scrollbar">
             <TimeControlButton onClick={() => onTimeTravel(-1, 'week')} label="Back 1 week">{'<<W'}</TimeControlButton>
             <TimeControlButton onClick={() => onTimeTravel(-1, 'day')} label="Back 1 day">{'<D'}</TimeControlButton>
             <TimeControlButton onClick={() => onSkipToCheckin('backward')} label="Back 1 checkin">{'<C'}</TimeControlButton>
@@ -72,8 +57,21 @@ const ExampleModeControls: React.FC<ExampleModeControlsProps> = ({
             <TimeControlButton onClick={() => onTimeTravel(1, 'day')} label="Forward 1 day">{'D>'}</TimeControlButton>
             <TimeControlButton onClick={() => onTimeTravel(1, 'week')} label="Forward 1 week">{'W>>'}</TimeControlButton>
           </div>
+
+          {/* Bottom Row: Dropdown */}
+          <div className="flex justify-center w-full">
+            <select 
+                className="bg-purple-800 text-white text-[10px] sm:text-xs rounded border border-purple-600 px-2 py-0.5 outline-none focus:ring-1 focus:ring-purple-400 w-full max-w-xs text-center cursor-pointer"
+                onChange={(e) => onSelectScenario(e.target.value)}
+                defaultValue=""
+            >
+                <option value="" disabled>Select Scenario Preset...</option>
+                {scenarios.map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                ))}
+            </select>
+          </div>
           
-        </div>
       </div>
     </div>
   );
