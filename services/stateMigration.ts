@@ -2,15 +2,10 @@
 import { AppState } from '../types';
 import { INITIAL_APP_STATE } from '../constants';
 
-// Helper to check if a value is a non-null object
 const isObject = (item: any): item is Record<string, any> => {
     return (item && typeof item === 'object' && !Array.isArray(item));
 };
 
-/**
- * Deeply merges two objects. The source object's properties overwrite the target object's properties.
- * Arrays from the source object completely replace arrays in the target object.
- */
 const deepMerge = (target: Record<string, any>, source: Record<string, any>): Record<string, any> => {
     const output = { ...target };
 
@@ -39,8 +34,6 @@ export const migrateState = (loadedState: Partial<AppState>): AppState => {
     if (!migrated.completedTaskLog) {
         migrated.completedTaskLog = [];
     } else {
-        // CRITICAL FIX: Filter out legacy logs that don't have the new 'subTasks' structure OR old snapshot structure.
-        // The new undo logic requires 'previousNpc' in affectedSlots.
         migrated.completedTaskLog = migrated.completedTaskLog.filter((log: any) => 
             log.task && 
             Array.isArray(log.task.subTasks) &&
@@ -52,20 +45,20 @@ export const migrateState = (loadedState: Partial<AppState>): AppState => {
     if (!migrated.virtualHouses) {
         migrated.virtualHouses = [];
     }
+    
+    if (typeof migrated.isPerfectionMode === 'undefined') {
+        migrated.isPerfectionMode = false;
+    }
 
-    // Migration: Convert House-level 'productionMode' (legacy) to Slot-level 'mode'
     if (migrated.houses) {
         migrated.houses = migrated.houses.map((h: any) => {
             const isIndependent = h.productionMode === 'INDEPENDENT';
             
-            // If house was previously labeled independent, mark all its slots as SOLO
-            // otherwise default to LINKED
             const updatedSlots = h.slots.map((slot: any) => ({
                 ...slot,
                 npc: {
                     ...slot.npc,
                     mode: slot.npc.mode || (isIndependent ? 'SOLO' : 'LINKED'),
-                    // Ensure remainingDurationMs is handled if present (auto-merged)
                 }
             }));
 

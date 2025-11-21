@@ -39,15 +39,12 @@ export const INITIAL_SALES_HISTORY: SaleRecord[] = [];
 export const INITIAL_COMPLETED_TASK_LOG: CompletedTaskLog[] = [];
 export const INITIAL_VIRTUAL_HOUSES: VirtualHouse[] = [];
 
-// The application now starts with a blank slate, allowing the user to build their factory.
 export const INITIAL_HOUSES: House[] = [];
 
 export const DIVISIONS: Division[] = Object.values(Division);
 
 export const DEFAULT_CHECKIN_TIMES: number[] = [9, 15, 21];
 
-// This is the source of truth for the application's default data structure.
-// The migration service uses this to ensure forward compatibility.
 export const INITIAL_APP_STATE: AppState = {
   houses: INITIAL_HOUSES,
   warehouseItems: INITIAL_WAREHOUSE_ITEMS,
@@ -58,4 +55,5 @@ export const INITIAL_APP_STATE: AppState = {
   checkinTimes: DEFAULT_CHECKIN_TIMES,
   completedTaskLog: INITIAL_COMPLETED_TASK_LOG,
   virtualHouses: INITIAL_VIRTUAL_HOUSES,
+  isPerfectionMode: false,
 };

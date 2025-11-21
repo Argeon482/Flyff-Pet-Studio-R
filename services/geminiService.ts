@@ -1,7 +1,6 @@
 
 import { House, WarehouseItem, DailyBriefingTask, CycleTime, NpcType, PriceConfig, DailyBriefingData, ProjectedProfit, Division, DashboardAnalytics, VirtualHouse } from "../types";
 
-// Calculates the THEORETICAL MAXIMUM throughput and ACTUAL UTILIZATION-BASED EXPENSES
 const calculateProjectedProfit = (
     houses: House[],
     cycleTimes: CycleTime[],
@@ -15,14 +14,9 @@ const calculateProjectedProfit = (
     }
 
     const avgHoursBetweenCheckins = 24 / checkinCount;
-    const avgIdleTime = avgHoursBetweenCheckins / 2; // Conservative estimate of idle time per cycle
+    const avgIdleTime = avgHoursBetweenCheckins / 2;
 
-    // --- GRAPH CONSTRUCTION ---
-    // We need to group slots into "Production Chains" to determine the bottleneck of each chain.
-    // The bottleneck determines the throughput of the whole chain.
-    // Upstream slots only need to run fast enough to feed the bottleneck (Utilization < 100%).
-
-    type NodeId = string; // "${houseId}-${slotIndex}"
+    type NodeId = string;
     const getNodeId = (hId: number, sIdx: number) => `${hId}-${sIdx}`;
     
     interface GraphNode {
@@ -31,14 +25,13 @@ const calculateProjectedProfit = (
         slotIndex: number;
         npcType: NpcType;
         cycleTime: number;
-        duration: number; // 7 or 15
+        duration: number;
         nextNodes: NodeId[];
     }
 
     const nodes: Map<NodeId, GraphNode> = new Map();
     const allNodeIds: Set<NodeId> = new Set();
 
-    // 1. Build Nodes and Edges
     houses.forEach(h => {
         h.slots.forEach((slot, i) => {
             if (!slot.npc.type || !slot.npc.duration) return;
@@ -59,21 +52,17 @@ const calculateProjectedProfit = (
                 nextNodes: []
             };
 
-            // Determine connection
             if (slot.npc.mode === 'LINKED') {
-                // Connect to next slot in same house if it exists and has an NPC
                 if (i < h.slots.length - 1 && h.slots[i+1].npc.type) {
                     node.nextNodes.push(getNodeId(h.id, i + 1));
                 }
             } else if (slot.npc.mode === 'SOLO' && slot.npc.virtualHouseId) {
-                // Connect to next slot in Virtual House
                 const vHouse = virtualHouses.find(vh => vh.id === slot.npc.virtualHouseId);
                 if (vHouse) {
                     const vIndex = vHouse.slots.findIndex(s => s.houseId === h.id && s.slotIndex === i);
                     if (vIndex !== -1 && vIndex < vHouse.slots.length - 1) {
                         const nextS = vHouse.slots[vIndex + 1];
                         const nextHouse = houses.find(hx => hx.id === nextS.houseId);
-                        // Only connect if next slot actually has an NPC setup
                         if (nextHouse?.slots[nextS.slotIndex].npc.type) {
                             node.nextNodes.push(getNodeId(nextS.houseId, nextS.slotIndex));
                         }
@@ -85,9 +74,6 @@ const calculateProjectedProfit = (
         });
     });
 
-    // 2. Find Connected Components (Chains)
-    const visited = new Set<NodeId>();
-    // Implementation of Union-Find for grouping
     const parent = new Map<NodeId, NodeId>();
     for (const id of allNodeIds) parent.set(id, id);
     
@@ -110,7 +96,6 @@ const calculateProjectedProfit = (
         });
     });
 
-    // Group nodes by root
     const groupedChains: Map<NodeId, GraphNode[]> = new Map();
     nodes.forEach(node => {
         const root = find(node.id);
@@ -118,8 +103,6 @@ const calculateProjectedProfit = (
         groupedChains.get(root)!.push(node);
     });
 
-    // 3. Calculate Metrics for each Chain
-    
     const OUTPUT_MAP: Record<string, NpcType> = {
         [NpcType.A]: NpcType.S, [NpcType.B]: NpcType.A, [NpcType.C]: NpcType.B,
         [NpcType.D]: NpcType.C, [NpcType.E]: NpcType.D, [NpcType.F]: NpcType.E, 
@@ -132,25 +115,16 @@ const calculateProjectedProfit = (
     const producedItemsMap: Record<string, number> = {};
 
     groupedChains.forEach(chainNodes => {
-        // A. Find Bottleneck (Slowest Cycle Time in the chain)
-        // The chain can only move as fast as its slowest link.
-        // We incorporate user check-in intervals into the effective cycle time of the bottleneck.
         let maxRawCycleTime = 0;
         chainNodes.forEach(n => {
             if (n.cycleTime > maxRawCycleTime) maxRawCycleTime = n.cycleTime;
         });
         
-        // Effective Bottleneck Time includes the idle time (waiting for player)
         const bottleneckEffectiveTime = maxRawCycleTime + avgIdleTime;
-
-        // B. Throughput (Items per week)
         const throughput = (24 * 7) / bottleneckEffectiveTime;
 
-        // C. Identify Sinks (Revenue Generators)
-        // A node is a sink if it has no outgoing connections within the chain
         chainNodes.forEach(node => {
             if (node.nextNodes.length === 0) {
-                // This is a terminal node for this chain. Calculate Revenue.
                 const producedType = OUTPUT_MAP[node.npcType] || NpcType.S;
                 const price = prices.petPrices[producedType] || 0;
                 
@@ -167,10 +141,6 @@ const calculateProjectedProfit = (
             }
         });
 
-        // D. Calculate Expenses based on Utilization
-        // Utilization = Node Cycle Time / Bottleneck Cycle Time
-        // If Node takes 10h and Bottleneck takes 50h, Node is utilized 20% (0.2).
-        // It is "Paused" the rest of the time.
         chainNodes.forEach(node => {
             const utilization = Math.min(1, node.cycleTime / maxRawCycleTime);
             const baseWeeklyCost = (node.duration === 7 ? prices.npcCost7Day : prices.npcCost15Day) * (7 / node.duration);
@@ -187,7 +157,6 @@ const calculateProjectedProfit = (
     return { grossRevenue, grossRevenueAlternativeA: grossRevenueAlternativeA || undefined, npcExpenses, perfectionExpenses, netProfit, sPetsCount, producedItems };
 };
 
-// Calculates the ACTUAL expected cash flow for the next 7 days based on current timers
 const calculateActualWeeklyFinances = (
     houses: House[],
     prices: PriceConfig,
@@ -205,7 +174,6 @@ const calculateActualWeeklyFinances = (
 
     houses.forEach(house => {
         house.slots.forEach(slot => {
-            // 1. Calculate Revenue
             if (slot.pet.finishTime && slot.pet.finishTime > now && slot.pet.finishTime <= endOfWeek) {
                  let producedType: NpcType | null = null;
                  if (slot.npc.type === NpcType.A) producedType = NpcType.S;
@@ -225,8 +193,6 @@ const calculateActualWeeklyFinances = (
                  }
             }
 
-            // 2. Calculate Expenses
-            // Ignore PAUSED NPCs (those without an expiration date)
             if (slot.npc.expiration) {
                 const expirationTime = new Date(slot.npc.expiration).getTime();
                 if (expirationTime > now && expirationTime <= endOfWeek) {
@@ -251,7 +217,8 @@ export const generateDailyBriefing = (
     checkinTimes: number[], 
     virtualHouses: VirtualHouse[],
     warehouseItems: WarehouseItem[],
-    currentTime?: number
+    currentTime?: number,
+    isPerfectionMode: boolean = false
 ): DailyBriefingData => {
     const now = currentTime ? new Date(currentTime) : new Date();
     const sortedCheckinHours = [...checkinTimes].sort((a,b) => a - b);
@@ -298,7 +265,6 @@ export const generateDailyBriefing = (
             const requiredItems: DailyBriefingTask['requiredWarehouseItems'] = [];
             let maxFinishTime = 0;
             
-            // 1. Check for Expired NPCs (RENEW_NPC)
             const expiredSlots = h.slots.map((s, i) => ({ ...s, slotIndex: i})).filter(s => {
                 if (!s.npc.type || !s.npc.expiration) return false;
                 return new Date(s.npc.expiration).getTime() <= nowTimestamp;
@@ -316,7 +282,6 @@ export const generateDailyBriefing = (
                  if (nowTimestamp > maxFinishTime) maxFinishTime = nowTimestamp;
             }
             
-            // 2. Check for Finished Pets (Harvest)
             const finishedSlotsInHouse = h.slots
                 .map((s, i) => ({ ...s, slotIndex: i }))
                 .filter(s => s.pet.finishTime && filterFn(s.pet.finishTime));
@@ -331,7 +296,6 @@ export const generateDailyBriefing = (
                 
                 if (slot.pet.finishTime! > maxFinishTime) maxFinishTime = slot.pet.finishTime!;
 
-                // INPUT Calculation - Only if this is the first slot of a chain
                 if (slot.slotIndex === 0) {
                     const itemId = inputMap[currentNpcType];
                     const itemName = inputNameMap[currentNpcType];
@@ -364,7 +328,6 @@ export const generateDailyBriefing = (
                         }
                     }
                 } else {
-                    // LINKED
                     if (currentRankIndex < npcRankOrder.length - 1) {
                         const targetSlotIdx = h.slots.findIndex(s => s.npc.type === nextRank);
                         if (targetSlotIdx !== -1) {
@@ -414,28 +377,35 @@ export const generateDailyBriefing = (
                 });
             });
             
-            // 3. Check for Idle Slots (FILL_IDLE)
-            // A slot is idle if: Has NPC, No Pet, Not in subTasks (for renewal or harvest)
             const idleSlots = h.slots.map((s, i) => ({ ...s, slotIndex: i })).filter(s => {
-                if (!s.npc.type) return false; // No NPC
-                if (s.pet.startTime) return false; // Busy
-                if (subTasks.some(st => st.slotIndex === s.slotIndex)) return false; // Already handled in this batch
-                
-                // Ignore if expired and not renewed
-                if (s.npc.expiration && new Date(s.npc.expiration).getTime() <= nowTimestamp) {
-                    // Should already be in subTasks as RENEW_NPC if we want to handle it
-                    return false; 
-                }
+                if (!s.npc.type) return false; 
+                if (s.pet.startTime) return false; 
+                if (subTasks.some(st => st.slotIndex === s.slotIndex)) return false; 
+                if (s.npc.expiration && new Date(s.npc.expiration).getTime() <= nowTimestamp) return false; 
                 
                 return true;
             });
 
             idleSlots.forEach(slot => {
-                // Check if we have input in warehouse
+                if (isPerfectionMode && slot.npc.type !== NpcType.A && slot.npc.type !== NpcType.B) {
+                     const outputMap: Record<string, string> = {
+                         [NpcType.F]: 'e-pet-wip',
+                         [NpcType.E]: 'd-pet-wip',
+                         [NpcType.D]: 'c-pet-wip',
+                         [NpcType.C]: 'b-pet-wip',
+                     };
+                     const outputId = outputMap[slot.npc.type!];
+                     if (outputId) {
+                         const outItem = warehouseItems.find(w => w.id === outputId);
+                         if (outItem && outItem.currentStock >= outItem.safetyStockLevel) {
+                             return; 
+                         }
+                     }
+                }
+
                 const inputId = inputMap[slot.npc.type!];
                 const item = warehouseItems.find(w => w.id === inputId);
                 
-                // We must account for usage in this batch so far
                 const currentUsage = requiredItems.find(r => r.itemId === inputId)?.count || 0;
                 const available = (item?.currentStock || 0) - currentUsage;
 

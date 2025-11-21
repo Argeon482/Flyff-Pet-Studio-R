@@ -16,6 +16,8 @@ interface DashboardProps {
   onPerfectionAttempt: () => void;
   virtualHouses: VirtualHouse[];
   simulatedTime: number | null;
+  isPerfectionMode: boolean;
+  onTogglePerfectionMode: () => void;
 }
 
 const EditableCashBalance: React.FC<{ balance: number; onSave: (newBalance: number) => void }> = ({ balance, onSave }) => {
@@ -118,7 +120,8 @@ const ProfitBreakdown: React.FC<{ profitData: ProjectedProfit, title: string, su
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     houses, warehouseItems, cashBalance, setCashBalance, 
-    cycleTimes, prices, checkinTimes, collectedPets, onPerfectionAttempt, virtualHouses, simulatedTime
+    cycleTimes, prices, checkinTimes, collectedPets, onPerfectionAttempt, virtualHouses, simulatedTime,
+    isPerfectionMode, onTogglePerfectionMode
 }) => {
     const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
 
@@ -144,15 +147,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     
     return (
         <div className="flex flex-col gap-3">
-            {/* Top Section: Cash & Projections */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-                {/* Cash - Compact vertical */}
                 <div className="lg:col-span-3 bg-gray-800 rounded-lg shadow-lg p-3 flex flex-col justify-center items-center text-center min-h-[auto] py-4">
                     <p className="text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider">Current Cash Balance</p>
                     <EditableCashBalance balance={cashBalance} onSave={setCashBalance} />
                 </div>
                 
-                {/* Projections */}
                 <div className="lg:col-span-9 bg-gray-800 rounded-lg shadow-lg p-3">
                      <div className="flex items-center mb-2">
                         <h3 className="text-sm font-bold text-white">Financial Projections</h3>
@@ -174,7 +174,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             </div>
 
-            {/* Bottom Section: Panels */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                  {renderPanel("At a Glance Warehouse", <WarehouseIcon />, 
                     <ul className="space-y-1 text-[11px] sm:text-sm">
@@ -209,6 +208,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                                <span>S-Pets:</span>
                                <span className="font-bold text-sm sm:text-base text-gray-200">{availableSPets}</span>
                            </div>
+                           
+                           <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-700">
+                                <label htmlFor="perfection-toggle" className="text-gray-400 cursor-pointer select-none">Perfection Mode</label>
+                                <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                    <input 
+                                        type="checkbox" 
+                                        name="toggle" 
+                                        id="perfection-toggle" 
+                                        checked={isPerfectionMode}
+                                        onChange={onTogglePerfectionMode}
+                                        className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer transition-all duration-300 ease-in-out checked:right-0 right-5"
+                                        style={{ right: isPerfectionMode ? '0' : '50%' }}
+                                    />
+                                    <label 
+                                        htmlFor="perfection-toggle" 
+                                        className={`toggle-label block overflow-hidden h-5 rounded-full cursor-pointer transition-colors duration-300 ${isPerfectionMode ? 'bg-purple-600' : 'bg-gray-600'}`}
+                                    ></label>
+                                </div>
+                           </div>
+
                            <button 
                                 onClick={onPerfectionAttempt}
                                 disabled={availableSPets === 0}

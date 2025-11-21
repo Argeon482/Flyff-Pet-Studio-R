@@ -19,9 +19,9 @@ export interface NpcSlot {
   type: NpcType | null;
   expiration: string | null;
   duration: 7 | 15 | null;
-  mode: 'LINKED' | 'SOLO'; // LINKED = flows to next slot in house; SOLO = managed by Virtual House or manual
-  virtualHouseId?: string; // ID of the Virtual House this slot belongs to (if any)
-  remainingDurationMs?: number; // Time remaining if the NPC is paused (removed from house)
+  mode: 'LINKED' | 'SOLO'; 
+  virtualHouseId?: string; 
+  remainingDurationMs?: number; 
 }
 
 export interface PetSlot {
@@ -42,11 +42,9 @@ export interface House {
   }[];
 }
 
-// A logical grouping of slots that form a production chain, independent of physical houses
 export interface VirtualHouse {
     id: string;
     name: string;
-    // The ordered list of physical slots that make up this virtual chain
     slots: {
         houseId: number;
         slotIndex: number;
@@ -63,34 +61,29 @@ export interface WarehouseItem {
 
 export interface CycleTime {
   npcType: NpcType;
-  time: number; // in hours
+  time: number; 
 }
 
-// Updated to support batched sub-tasks
 export interface DailyBriefingTask {
-  id: string; // Unique ID for the batch
+  id: string; 
   houseId: number;
   serviceBlock: string;
   estFinishTime: string;
   
-  // The overarching description (e.g. "Service House #1")
   taskLabel: string;
 
-  // Indicates if all active slots in this house are finished (Priority Flag)
   isFullyReady: boolean;
 
-  // The specific sub-actions involved in this batch
   subTasks: {
       slotIndex: number;
       currentNpcType: NpcType;
       nextNpcType: NpcType;
       actionType: 'HARVEST_AND_RESTART' | 'HARVEST_AND_STORE' | 'HARVEST_UPGRADE_AND_STORE' | 'COLLECT_S' | 'RENEW_NPC' | 'FILL_IDLE';
-      targetHouseId?: number; // For cross-house moves
+      targetHouseId?: number; 
       targetSlotIndex?: number;
       virtualHouseName?: string;
   }[];
 
-  // Aggregated requirements
   requiredWarehouseItems: { itemId: string; count: number; name: string }[];
 }
 
@@ -158,7 +151,6 @@ export interface CompletedTaskLog {
     task: DailyBriefingTask;
     timestamp: number;
     summary: string; 
-    // Store full snapshot of the affected slots BEFORE the change for robust undo
     affectedSlots: {
         houseId: number;
         slotIndex: number;
@@ -177,4 +169,5 @@ export interface AppState {
     checkinTimes: number[];
     completedTaskLog: CompletedTaskLog[];
     virtualHouses: VirtualHouse[]; 
+    isPerfectionMode: boolean;
 }

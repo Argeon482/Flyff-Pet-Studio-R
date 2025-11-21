@@ -16,7 +16,6 @@ import ExampleModeControls from './components/ExampleModeControls';
 import SaveLoadModal from './components/SaveLoadModal';
 import VirtualHouseModal from './components/VirtualHouseModal';
 
-// UTILITY FUNCTION
 const calculateAndAssignServiceBlocks = (houses: House[]): House[] => {
     const groupedByDivision: Record<string, House[]> = {};
     for (const house of houses) {
@@ -38,7 +37,7 @@ const calculateAndAssignServiceBlocks = (houses: House[]): House[] => {
         if (numBlocks === 0) return;
 
         divisionHouses.forEach((house, index) => {
-            const blockLetter = String.fromCharCode(65 + (index % numBlocks)); // A, B, C
+            const blockLetter = String.fromCharCode(65 + (index % numBlocks)); 
             updatedHouses.push({ ...house, serviceBlock: `${division} Block ${blockLetter}` });
         });
     });
@@ -70,7 +69,6 @@ const App: React.FC = () => {
   const [isSaveLoadModalOpen, setIsSaveLoadModalOpen] = useState(false);
   const [isVirtualHouseModalOpen, setIsVirtualHouseModalOpen] = useState(false);
 
-  // Playground Mode State
   const [isInExampleMode, setIsInExampleMode] = useState(false);
   const [userSavedState, setUserSavedState] = useState<AppState | null>(null);
   const [simulatedTime, setSimulatedTime] = useState<number | null>(null);
@@ -94,18 +92,17 @@ const App: React.FC = () => {
           prices: appState.prices, 
           checkinTimes: appState.checkinTimes,
           completedTaskLog: [],
-          virtualHouses: [], // Examples don't have virtual houses yet
+          virtualHouses: [], 
+          isPerfectionMode: false,
       });
   };
 
   const handleLoadScenario = (key: string) => {
       if (key === 'CURRENT') {
-          // Deep clone the user's actual saved state to allow simulation without affecting real data
           if (userSavedState) {
               setAppState(JSON.parse(JSON.stringify(userSavedState)));
           }
       } else {
-          // Load presets
           switch (key) {
               case 'EXAMPLE_2': loadExample(examples.getExample2House()); break;
               case 'EXAMPLE_13': loadExample(examples.getExample13House()); break;
@@ -119,8 +116,6 @@ const App: React.FC = () => {
     setUserSavedState(appState);
     setIsInExampleMode(true);
     setSimulatedTime(Date.now());
-    // Default to loading the 2-House example to make it obvious we switched modes,
-    // but the user can now switch back to "Current" via the dropdown.
     loadExample(examples.getExample2House());
   };
 
@@ -157,17 +152,13 @@ const App: React.FC = () => {
       setAppState(prev => {
           const newVirtualHouses = typeof updater === 'function' ? updater(prev.virtualHouses) : updater;
           
-          // When virtual houses change, we need to update the slots in the physical houses
-          // to reflect their assignment (adding/removing the virtualHouseId)
           const newHouses = prev.houses.map(house => ({
               ...house,
               slots: house.slots.map((slot, idx) => {
-                  // Check if this slot belongs to any virtual house
                   const vHouse = newVirtualHouses.find(vh => 
                       vh.slots.some(s => s.houseId === house.id && s.slotIndex === idx)
                   );
                   
-                  // Only update if the status has changed
                   if (slot.npc.virtualHouseId !== (vHouse ? vHouse.id : undefined)) {
                       return {
                           ...slot,
@@ -209,7 +200,7 @@ const App: React.FC = () => {
                     type,
                     expiration: null,
                     duration: type ? 15 : null,
-                    mode: 'LINKED', // Default to Linked
+                    mode: 'LINKED', 
                 },
                 pet: { name: null, startTime: null, finishTime: null },
             });
@@ -306,14 +297,11 @@ const App: React.FC = () => {
   
   const handleSellPets = useCallback((petType: NpcType, quantity: number, pricePerUnit: number) => {
     setAppState(prev => {
-      // Strict immutability: Clone arrays completely
       let newCollectedPets = prev.collectedPets.map(item => ({ ...item }));
       let newWarehouseItems = prev.warehouseItems.map(item => ({ ...item }));
       
-      // Logic to deduct pets
       let remainingToSell = quantity;
 
-      // 1. Try Collected Pets first (Mainly S-Pets)
       const existingCollectedIndex = newCollectedPets.findIndex(p => p.petType === petType);
       if (existingCollectedIndex !== -1) {
           const existingCollected = newCollectedPets[existingCollectedIndex];
@@ -326,11 +314,9 @@ const App: React.FC = () => {
               remainingToSell -= sellAmount;
           }
       }
-      // Filter out zero quantity collected pets
       newCollectedPets = newCollectedPets.filter(p => p.quantity > 0);
 
 
-      // 2. If still need to sell, check Warehouse (WIP)
       if (remainingToSell > 0) {
           const wipMap: { [key in NpcType]?: string } = {
               [NpcType.F]: 'f-pet-wip',
@@ -359,7 +345,6 @@ const App: React.FC = () => {
           }
       }
 
-      // 3. Special Case: F-Pets can also be in "Stock"
       if (remainingToSell > 0 && petType === NpcType.F) {
            const stockIndex = newWarehouseItems.findIndex(i => i.id === 'f-pet-stock');
            if (stockIndex !== -1) {
@@ -414,8 +399,10 @@ const App: React.FC = () => {
       setAppState(prev => ({ ...prev, checkinTimes: times }));
   }, []);
 
-  // Helper to mathematically advance factory state (Renew NPCs, Auto-complete/restart pets)
-  // This simulates perfectly efficient management during the skipped time.
+  const togglePerfectionMode = useCallback(() => {
+      setAppState(prev => ({ ...prev, isPerfectionMode: !prev.isPerfectionMode }));
+  }, []);
+
   const advanceFactoryState = (prevTime: number, newTime: number, state: AppState): AppState => {
       if (newTime <= prevTime) return state;
 
@@ -424,14 +411,10 @@ const App: React.FC = () => {
           slots: house.slots.map(slot => {
               let updatedSlot = { ...slot };
 
-              // 1. Handle NPC Renewal
-              // If an NPC expired during the skip, we assume it was immediately replaced.
-              // Logic: Extend expiration until it falls after the newTime.
               if (updatedSlot.npc.expiration && updatedSlot.npc.duration) {
                   let currentExpiration = new Date(updatedSlot.npc.expiration).getTime();
                   if (currentExpiration <= newTime) {
                       const durationMs = updatedSlot.npc.duration * 24 * 60 * 60 * 1000;
-                      // Advance expiration in increments of duration until it's in the future
                       while (currentExpiration <= newTime) {
                           currentExpiration += durationMs;
                       }
@@ -442,17 +425,12 @@ const App: React.FC = () => {
                   }
               }
 
-              // 2. Handle Pet Completion & Auto-Restart
-              // If a pet finished during the skip, we assume it was collected and a new one started immediately.
-              // Logic: Shift finish time forward by N cycle durations so it is running relative to newTime.
               if (updatedSlot.pet.finishTime && updatedSlot.pet.finishTime <= newTime) {
                   const cycle = CYCLE_TIMES.find(c => c.npcType === updatedSlot.npc.type);
                   if (cycle) {
                       const durationMs = cycle.time * 3600000;
                       let currentFinish = updatedSlot.pet.finishTime;
                       
-                      // Shift finish time forward until it is in the future relative to newTime
-                      // This effectively simulates that we collected and restarted the pet N times.
                       while (currentFinish <= newTime) {
                           currentFinish += durationMs;
                       }
@@ -485,7 +463,6 @@ const App: React.FC = () => {
       
       const newTime = prev + msToAdd;
       
-      // If moving forward, advance the factory state to prevent everything from expiring
       if (msToAdd > 0) {
           setAppState(curr => advanceFactoryState(prev, newTime, curr));
       }
@@ -518,7 +495,7 @@ const App: React.FC = () => {
                 .find(time => time.getTime() > now.getTime());
             
             if (nextCheckin) nextTime = nextCheckin.getTime();
-        } else { // backward
+        } else { 
             const prevCheckin = checkinDates
                 .sort((a, b) => b.getTime() - a.getTime())
                 .find(time => time.getTime() < now.getTime());
@@ -534,10 +511,10 @@ const App: React.FC = () => {
         }
         return prev;
     });
-  }, [appState.checkinTimes, simulatedTime]); // Added simulatedTime dependency to ensure stability if needed, though setter callback handles prev
+  }, [appState.checkinTimes, simulatedTime]);
 
   const renderView = () => {
-    const { houses, warehouseItems, cashBalance, prices, collectedPets, salesHistory, checkinTimes, completedTaskLog, virtualHouses } = appState;
+    const { houses, warehouseItems, cashBalance, prices, collectedPets, salesHistory, checkinTimes, completedTaskLog, virtualHouses, isPerfectionMode } = appState;
     switch (currentView) {
       case View.DASHBOARD:
         return <Dashboard 
@@ -546,6 +523,8 @@ const App: React.FC = () => {
             checkinTimes={checkinTimes} collectedPets={collectedPets} onPerfectionAttempt={handlePerfectionAttempt}
             virtualHouses={virtualHouses}
             simulatedTime={simulatedTime}
+            isPerfectionMode={isPerfectionMode}
+            onTogglePerfectionMode={togglePerfectionMode}
         />;
       case View.DAILY_BRIEFING:
         return <DailyBriefing 
@@ -554,6 +533,7 @@ const App: React.FC = () => {
             setWarehouseItems={setWarehouseItems} checkinTimes={checkinTimes} simulatedTime={simulatedTime}
             completedTaskLog={completedTaskLog} setCompletedTaskLog={setCompletedTaskLog}
             virtualHouses={virtualHouses}
+            isPerfectionMode={isPerfectionMode}
         />;
       case View.FACTORY_FLOOR:
         return <FactoryFloor
